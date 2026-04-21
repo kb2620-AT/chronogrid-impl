@@ -1,4 +1,27 @@
-﻿node_modules/
-trace.txt
-*.tsbuildinfo
+﻿# Dependencies
+node_modules/
+
+# Build outputs
 dist/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs & Debug
+trace.txt
+*.log
+
+# Hilfsskripte (temporär)
+fix.cjs
+fix2.cjs
+fix3.cjs
+fix-level.cjs
+patch-resolve.cjs
+show-chars.cjs
+show-resolve.cjs
+show-resolve.js
+
+# OS
+.DS_Store
+Thumbs.db
