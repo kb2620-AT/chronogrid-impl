@@ -1,0 +1,4 @@
+﻿node_modules/
+trace.txt
+*.tsbuildinfo
+dist/

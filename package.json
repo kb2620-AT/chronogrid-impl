@@ -1,0 +1,29 @@
+{
+  "name": "chronogrid-monorepo",
+  "version": "1.0.0",
+  "description": "ChronoGrid Reference Implementation — Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "test": "npm run test --workspaces",
+    "test:level1": "npm run test:level1 --workspace=cg-testkit",
+    "lint": "eslint packages/*/src/**/*.ts",
+    "format": "prettier --write packages/*/src/**/*.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module"
+}

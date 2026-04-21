@@ -1,0 +1,23 @@
+{
+  "name": "cg-testkit",
+  "version": "1.0.0",
+  "description": "ChronoGrid Conformance Testkit — CG-STD-3100 v1.5 + CG-STD-4100 v0.5",
+  "type": "module",
+  "bin": {
+    "cg-testkit": "./src/cli.ts"
+  },
+  "scripts": {
+    "test":        "node --loader ts-node/esm src/cli.ts",
+    "test:level1": "node --loader ts-node/esm src/cli.ts --level 1",
+    "test:level2": "node --loader ts-node/esm src/cli.ts --level 2",
+    "test:level3": "node --loader ts-node/esm src/cli.ts --level 3",
+    "test:json":   "node --loader ts-node/esm src/cli.ts --json",
+    "report":      "node --loader ts-node/esm src/cli.ts --level 3 --output conformance-report.json"
+  },
+  "keywords": ["chronogrid", "conformance", "testing", "CG-STD-3100", "CG-STD-4100"],
+  "devDependencies": {
+    "typescript":  "^5.4.0",
+    "ts-node":     "^10.9.2",
+    "@types/node": "^20.0.0"
+  }
+}
