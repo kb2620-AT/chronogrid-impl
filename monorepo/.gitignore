@@ -3,5 +3,4 @@ dist/
 *.tsbuildinfo
 .env
 conformance-report.json
-.DS_Store
-*.log
+conformance-report.html

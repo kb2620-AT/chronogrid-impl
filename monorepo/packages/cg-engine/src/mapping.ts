@@ -1,10 +1,9 @@
-import { iso8601ToSeconds } from './gregorian.js';
+import{iso8601ToSeconds}from'./gregorian.js';
 const LS=[{u:iso8601ToSeconds('1972-01-01T00:00:00Z'),d:10n},{u:iso8601ToSeconds('1972-07-01T00:00:00Z'),d:11n},{u:iso8601ToSeconds('1973-01-01T00:00:00Z'),d:12n},{u:iso8601ToSeconds('1974-01-01T00:00:00Z'),d:13n},{u:iso8601ToSeconds('1975-01-01T00:00:00Z'),d:14n},{u:iso8601ToSeconds('1976-01-01T00:00:00Z'),d:15n},{u:iso8601ToSeconds('1977-01-01T00:00:00Z'),d:16n},{u:iso8601ToSeconds('1978-01-01T00:00:00Z'),d:17n},{u:iso8601ToSeconds('1979-01-01T00:00:00Z'),d:18n},{u:iso8601ToSeconds('1980-01-01T00:00:00Z'),d:19n},{u:iso8601ToSeconds('1981-07-01T00:00:00Z'),d:20n},{u:iso8601ToSeconds('1982-07-01T00:00:00Z'),d:21n},{u:iso8601ToSeconds('1983-07-01T00:00:00Z'),d:22n},{u:iso8601ToSeconds('1985-07-01T00:00:00Z'),d:23n},{u:iso8601ToSeconds('1988-01-01T00:00:00Z'),d:24n},{u:iso8601ToSeconds('1990-01-01T00:00:00Z'),d:25n},{u:iso8601ToSeconds('1991-01-01T00:00:00Z'),d:26n},{u:iso8601ToSeconds('1992-07-01T00:00:00Z'),d:27n},{u:iso8601ToSeconds('1993-07-01T00:00:00Z'),d:28n},{u:iso8601ToSeconds('1994-07-01T00:00:00Z'),d:29n},{u:iso8601ToSeconds('1996-01-01T00:00:00Z'),d:30n},{u:iso8601ToSeconds('1997-07-01T00:00:00Z'),d:31n},{u:iso8601ToSeconds('1999-01-01T00:00:00Z'),d:32n},{u:iso8601ToSeconds('2006-01-01T00:00:00Z'),d:33n},{u:iso8601ToSeconds('2009-01-01T00:00:00Z'),d:34n},{u:iso8601ToSeconds('2012-07-01T00:00:00Z'),d:35n},{u:iso8601ToSeconds('2015-07-01T00:00:00Z'),d:36n},{u:iso8601ToSeconds('2017-01-01T00:00:00Z'),d:37n}];
 export function taiMinusUtcAt(utc:bigint):bigint{let o=0n;for(const l of LS){if(utc>=l.u)o=l.d;else break;}return o;}
 export function utcToTai(utc:bigint):bigint{return utc+taiMinusUtcAt(utc);}
-export function taiToUtc(tai:bigint):bigint{let utc=tai-37n;for(let i=0;i<3;i++)utc=tai-taiMinusUtcAt(utc);return utc;}
-const GPS_EPOCH=iso8601ToSeconds('1980-01-06T00:00:00Z');
-const TAI_GPS=19n;
+export function taiToUtc(tai:bigint):bigint{let u=tai-37n;for(let i=0;i<3;i++)u=tai-taiMinusUtcAt(u);return u;}
+const GPS_EPOCH=iso8601ToSeconds('1980-01-06T00:00:00Z'),TAI_GPS=19n;
 export function gpsToTai(gps:bigint):bigint{return GPS_EPOCH+gps+TAI_GPS;}
 export function taiToGps(tai:bigint):bigint{return tai-GPS_EPOCH-TAI_GPS;}
 export const CURRENT_TAI_MINUS_UTC=37n;

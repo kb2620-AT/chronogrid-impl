@@ -1,117 +1,29 @@
-import { createHash, randomUUID } from 'node:crypto';
-import type { CGTimepoint, CGDomain, CGManifest, CGRelation } from 'cg-types/domain.js';
-import { Errors } from 'cg-types/errors.js';
-import { parseDomain } from 'cg-ctddl/parser.js';
-import { createTimepoint, allenRelation, decodeCGTA, computeCGFI, convertValue } from 'cg-engine/engine.js';
-import type { ITimepointRepository, IDomainRepository, IManifestRepository, IRelationRepository, ISegmentRepository } from 'cg-storage/repository.js';
-import type { CGRequest, CGResponse } from './middleware.js';
-import { jsonResponse, errorResponse } from './middleware.js';
-import type { JWTPayload } from './auth.js';
-
-export interface APIContext {
-  timepoints: ITimepointRepository; domains: IDomainRepository; manifests: IManifestRepository;
-  relations: IRelationRepository; segments: ISegmentRepository;
-  now: () => bigint; principal?: JWTPayload;
-}
-
-export async function getHealth(_r: CGRequest, _c: APIContext): Promise<CGResponse> {
-  return jsonResponse(200, { status: 'ok', service: 'cg-api', version: '0.8.0', cgStd: 'CG-STD-4100 v0.7', timestamp: new Date().toISOString() });
-}
-export async function getOpenApi(_r: CGRequest, _c: APIContext): Promise<CGResponse> {
-  const { openApiSpec } = await import('./openapi.js'); return jsonResponse(200, openApiSpec);
-}
-export async function postTimepoints(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const b = req.body as Record<string, unknown>;
-    if (!b['domain'] || b['value'] === undefined) throw Errors.SyntaxError.missingField('domain und value');
-    const tp = createTimepoint(b['domain'] as string, (b['version'] as string) ?? '1.0', BigInt(b['value'] as string | number), (b['labels'] as Record<string, string>) ?? {});
-    await ctx.timepoints.insert(tp); return jsonResponse(201, serTP(tp));
-  } catch (e) { return errorResponse(e); }
-}
-export async function listTimepoints(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const tps = await ctx.timepoints.list(parseInt(req.query['limit'] ?? '100', 10), parseInt(req.query['offset'] ?? '0', 10));
-    return jsonResponse(200, { items: tps.map(serTP) });
-  } catch (e) { return errorResponse(e); }
-}
-export async function getTimepoint(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const tp = await ctx.timepoints.findById(req.params['machine_id']!);
-    return tp ? jsonResponse(200, serTP(tp)) : jsonResponse(404, { message: 'Nicht gefunden' });
-  } catch (e) { return errorResponse(e); }
-}
-export async function convertTimepoint(req: CGRequest, _c: APIContext): Promise<CGResponse> {
-  try {
-    const b = req.body as Record<string, unknown>;
-    const out = convertValue(BigInt(b['value'] as string | number), b['from_domain'] as string, b['to_domain'] as string);
-    return jsonResponse(200, { from_domain: b['from_domain'], to_domain: b['to_domain'], input: String(b['value']), output: out.toString() });
-  } catch (e) { return errorResponse(e); }
-}
-export async function validateTimepoint(req: CGRequest, _c: APIContext): Promise<CGResponse> {
-  try { const cgta = decodeCGTA((req.body as Record<string, unknown>)['cgta'] as string); return jsonResponse(200, { valid: true, parsed: { ...cgta, value: cgta.value.toString() } }); }
-  catch (e) { return errorResponse(e, 422); }
-}
-export async function listDomains(_r: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try { return jsonResponse(200, { items: await ctx.domains.list() }); } catch (e) { return errorResponse(e); }
-}
-export async function postDomain(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const raw = req.body as Record<string, unknown>;
-    const definition = parseDomain(raw['definition'] ?? raw);
-    await ctx.domains.insert({ name: definition.name, version: definition.version, definition, published: false, created_at: ctx.now() });
-    return jsonResponse(201, { name: definition.name, version: definition.version });
-  } catch (e) { return errorResponse(e); }
-}
-export async function validateDomain(req: CGRequest, _c: APIContext): Promise<CGResponse> {
-  try { const p = parseDomain(req.body); return jsonResponse(200, { valid: true, name: p.name, version: p.version }); }
-  catch (e) { return errorResponse(e, 422); }
-}
-export async function computeRelation(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const b = req.body as Record<string, unknown>;
-    const relation = allenRelation({ start: BigInt(b['a_start'] as string ?? 0), end: BigInt(b['a_end'] as string ?? 0) }, { start: BigInt(b['b_start'] as string ?? 0), end: BigInt(b['b_end'] as string ?? 0) });
-    const rel: CGRelation = { id: randomUUID(), timepoint_a: (b['a_id'] as string) ?? '', timepoint_b: (b['b_id'] as string) ?? '', relation, computed_at: ctx.now() };
-    await ctx.relations.insert(rel); return jsonResponse(200, rel);
-  } catch (e) { return errorResponse(e); }
-}
-export async function postSegment(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const b = req.body as Record<string, unknown>;
-    const seg = await ctx.segments.allocate((b['granted_by'] as string) ?? 'api', BigInt((b['size_ns'] as string | number) ?? 1_000_000_000), b['parent_id'] as string | undefined);
-    return jsonResponse(201, serSeg(seg));
-  } catch (e) { return errorResponse(e); }
-}
-export async function resolveCGUA(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const cgua = decodeURIComponent(req.params['cgua']!);
-    const { parseCGUA } = await import('cg-cguas/cguas.js');
-    const parsed = parseCGUA(cgua);
-    const seg = await ctx.segments.resolve(parsed.segmentId);
-    return jsonResponse(200, { cgua, segment: serSeg(seg), local_offset: parsed.localOffset.toString() });
-  } catch (e) { return errorResponse(e); }
-}
-export async function postFile(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const b = req.body as Record<string, unknown>;
-    const contentHash = (b['content_hash'] as string) ?? createHash('sha256').update(JSON.stringify(b)).digest('hex');
-    const typeId = (b['type_id'] as string) ?? 'application/octet-stream';
-    const cgfi = computeCGFI((b['tai_timepoint'] as string) ?? 'none', contentHash, typeId);
-    const m: CGManifest = { cgfi, tai_timepoint: (b['tai_timepoint'] as string) ?? 'none', content_hash: contentHash, type_id: typeId, size_bytes: BigInt((b['size_bytes'] as string | number) ?? 0), metadata: (b['metadata'] as Record<string, string>) ?? {}, tombstone: false, created_at: ctx.now() };
-    await ctx.manifests.insert(m); return jsonResponse(201, serMan(m));
-  } catch (e) { return errorResponse(e); }
-}
-export async function getFile(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try {
-    const m = await ctx.manifests.findByCGFI(req.params['cgfi']!);
-    if (!m) return jsonResponse(404, { message: 'Nicht gefunden' });
-    if (m.tombstone) return jsonResponse(410, { message: 'Tombstone (I-S1)' });
-    return jsonResponse(200, serMan(m));
-  } catch (e) { return errorResponse(e); }
-}
-export async function deleteFile(req: CGRequest, ctx: APIContext): Promise<CGResponse> {
-  try { await ctx.manifests.tombstone(req.params['cgfi']!); return jsonResponse(200, { message: 'Tombstone gesetzt' }); }
-  catch (e) { return errorResponse(e); }
-}
-function serTP(tp: CGTimepoint) { return { ...tp, absolute_value: tp.absolute_value.toString(), created_at: tp.created_at.toString() }; }
-function serSeg(s: Awaited<ReturnType<ISegmentRepository['resolve']>>) { return { ...s, base_address: s.base_address.toString(), size_ns: s.size_ns.toString(), created_at: s.created_at.toString() }; }
-function serMan(m: CGManifest) { return { ...m, size_bytes: m.size_bytes.toString(), created_at: m.created_at.toString() }; }
+import{createHash,randomUUID}from'node:crypto';
+import type{CGTimepoint,CGDomain,CGManifest,CGRelation}from'cg-types/domain.js';
+import{Errors}from'cg-types/errors.js';
+import{parseDomain}from'cg-ctddl/parser.js';
+import{createTimepoint,allenRelation,decodeCGTA,computeCGFI,convertValue}from'cg-engine/engine.js';
+import type{ITimepointRepository,IDomainRepository,IManifestRepository,IRelationRepository,ISegmentRepository}from'cg-storage/repository.js';
+import type{CGRequest,CGResponse}from'./middleware.js';
+import{jsonResponse,errorResponse}from'./middleware.js';
+import type{JWTPayload}from'./auth.js';
+export interface APIContext{timepoints:ITimepointRepository;domains:IDomainRepository;manifests:IManifestRepository;relations:IRelationRepository;segments:ISegmentRepository;now:()=>bigint;principal?:JWTPayload;}
+export async function getHealth(_r:CGRequest,_c:APIContext):Promise<CGResponse>{return jsonResponse(200,{status:'ok',service:'cg-api',version:'0.9.0',cgStd:'CG-STD-4100 v0.7',timestamp:new Date().toISOString()});}
+export async function getOpenApi(_r:CGRequest,_c:APIContext):Promise<CGResponse>{const{openApiSpec}=await import('./openapi.js');return jsonResponse(200,openApiSpec);}
+export async function postTimepoints(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const b=req.body as Record<string,unknown>;if(!b['domain']||b['value']===undefined)throw Errors.SyntaxError.missingField('domain+value');const tp=createTimepoint(b['domain'] as string,(b['version'] as string)??'1.0',BigInt(b['value'] as string|number),(b['labels'] as Record<string,string>)??{});await ctx.timepoints.insert(tp);return jsonResponse(201,serTP(tp));}catch(e){return errorResponse(e);}}
+export async function listTimepoints(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const tps=await ctx.timepoints.list(parseInt(req.query['limit']??'100',10),parseInt(req.query['offset']??'0',10));return jsonResponse(200,{items:tps.map(serTP)});}catch(e){return errorResponse(e);}}
+export async function getTimepoint(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const tp=await ctx.timepoints.findById(req.params['machine_id']!);return tp?jsonResponse(200,serTP(tp)):jsonResponse(404,{message:'Nicht gefunden'});}catch(e){return errorResponse(e);}}
+export async function convertTimepoint(req:CGRequest,_c:APIContext):Promise<CGResponse>{try{const b=req.body as Record<string,unknown>;const out=convertValue(BigInt(b['value'] as string|number),b['from_domain'] as string,b['to_domain'] as string);return jsonResponse(200,{from_domain:b['from_domain'],to_domain:b['to_domain'],input:String(b['value']),output:out.toString()});}catch(e){return errorResponse(e);}}
+export async function validateTimepoint(req:CGRequest,_c:APIContext):Promise<CGResponse>{try{const cgta=decodeCGTA((req.body as Record<string,unknown>)['cgta'] as string);return jsonResponse(200,{valid:true,parsed:{...cgta,value:cgta.value.toString()}});}catch(e){return errorResponse(e,422);}}
+export async function listDomains(_r:CGRequest,ctx:APIContext):Promise<CGResponse>{try{return jsonResponse(200,{items:await ctx.domains.list()});}catch(e){return errorResponse(e);}}
+export async function postDomain(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const raw=req.body as Record<string,unknown>;const definition=parseDomain(raw['definition']??raw);await ctx.domains.insert({name:definition.name,version:definition.version,definition,published:false,created_at:ctx.now()});return jsonResponse(201,{name:definition.name,version:definition.version});}catch(e){return errorResponse(e);}}
+export async function validateDomain(req:CGRequest,_c:APIContext):Promise<CGResponse>{try{const p=parseDomain(req.body);return jsonResponse(200,{valid:true,name:p.name,version:p.version});}catch(e){return errorResponse(e,422);}}
+export async function computeRelation(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const b=req.body as Record<string,unknown>;const relation=allenRelation({start:BigInt(b['a_start'] as string??0),end:BigInt(b['a_end'] as string??0)},{start:BigInt(b['b_start'] as string??0),end:BigInt(b['b_end'] as string??0)});const rel:CGRelation={id:randomUUID(),timepoint_a:(b['a_id'] as string)??'',timepoint_b:(b['b_id'] as string)??'',relation,computed_at:ctx.now()};await ctx.relations.insert(rel);return jsonResponse(200,rel);}catch(e){return errorResponse(e);}}
+export async function postSegment(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const b=req.body as Record<string,unknown>;const seg=await ctx.segments.allocate((b['granted_by'] as string)??'api',BigInt((b['size_ns'] as string|number)??1_000_000_000),b['parent_id'] as string|undefined);return jsonResponse(201,serSeg(seg));}catch(e){return errorResponse(e);}}
+export async function resolveCGUA(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const cgua=decodeURIComponent(req.params['cgua']!);const{parseCGUA}=await import('cg-cguas/cguas.js');const parsed=parseCGUA(cgua);const seg=await ctx.segments.resolve(parsed.segmentId);return jsonResponse(200,{cgua,segment:serSeg(seg),local_offset:parsed.localOffset.toString()});}catch(e){return errorResponse(e);}}
+export async function postFile(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const b=req.body as Record<string,unknown>;const contentHash=(b['content_hash'] as string)??createHash('sha256').update(JSON.stringify(b)).digest('hex');const typeId=(b['type_id'] as string)??'application/octet-stream';const cgfi=computeCGFI((b['tai_timepoint'] as string)??'none',contentHash,typeId);const m:CGManifest={cgfi,tai_timepoint:(b['tai_timepoint'] as string)??'none',content_hash:contentHash,type_id:typeId,size_bytes:BigInt((b['size_bytes'] as string|number)??0),metadata:(b['metadata'] as Record<string,string>)??{},tombstone:false,created_at:ctx.now()};await ctx.manifests.insert(m);return jsonResponse(201,serMan(m));}catch(e){return errorResponse(e);}}
+export async function getFile(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{const m=await ctx.manifests.findByCGFI(req.params['cgfi']!);if(!m)return jsonResponse(404,{message:'Nicht gefunden'});if(m.tombstone)return jsonResponse(410,{message:'Tombstone'});return jsonResponse(200,serMan(m));}catch(e){return errorResponse(e);}}
+export async function deleteFile(req:CGRequest,ctx:APIContext):Promise<CGResponse>{try{await ctx.manifests.tombstone(req.params['cgfi']!);return jsonResponse(200,{message:'Tombstone gesetzt'});}catch(e){return errorResponse(e);}}
+function serTP(tp:CGTimepoint){return{...tp,absolute_value:tp.absolute_value.toString(),created_at:tp.created_at.toString()};}
+function serSeg(s:Awaited<ReturnType<ISegmentRepository['resolve']>>){return{...s,base_address:s.base_address.toString(),size_ns:s.size_ns.toString(),created_at:s.created_at.toString()};}
+function serMan(m:CGManifest){return{...m,size_bytes:m.size_bytes.toString(),created_at:m.created_at.toString()};}

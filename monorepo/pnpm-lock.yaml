@@ -35,6 +35,9 @@ importers:
       cg-types:
         specifier: workspace:*
         version: link:../../packages/cg-types
+      cg-usecases:
+        specifier: workspace:*
+        version: link:../../packages/cg-usecases
       graphql:
         specifier: ^16.8.1
         version: 16.13.2
@@ -109,6 +112,9 @@ importers:
       cg-types:
         specifier: workspace:*
         version: link:../cg-types
+      cg-usecases:
+        specifier: workspace:*
+        version: link:../cg-usecases
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -121,6 +127,18 @@ importers:
         version: 5.9.3
 
   packages/cg-types: {}
+
+  packages/cg-usecases:
+    dependencies:
+      cg-ctddl:
+        specifier: workspace:*
+        version: link:../cg-ctddl
+      cg-engine:
+        specifier: workspace:*
+        version: link:../cg-engine
+      cg-types:
+        specifier: workspace:*
+        version: link:../cg-types
 
 packages:
 

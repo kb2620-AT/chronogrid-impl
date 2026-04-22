@@ -1,62 +1,51 @@
-# ChronoGrid Reference Implementation — Sprint 8
+# ChronoGrid Reference Implementation — Sprint 9
 
-**Architektur:** CG-APP-0700 v0.3 | **Konformität:** Level 3 (181/181 Tests) | TypeScript + Node.js
+**Architektur:** CG-APP-0700 v0.3 | **Konformität:** Level 3 (204/204 Tests) | TypeScript + Node.js
 
 ## Sprint-Übersicht
 
 | Sprint | Inhalt | Tests |
 |---|---|---|
 | 1–5 | Engine, CTDDL, CGUAS, REST API, Testkit | 72 |
-| 6 | PostgreSQL-Anbindung, HTTP-Server, Storage | +12 |
-| 7 | GraphQL (Kap. 5), Webhooks (Kap. 6), Interface-APIContext | +39 |
-| 8 | JWT/RBAC (Kap. 7), T-API-* HTTP-Integrationstests | +58 |
-| **Gesamt** | | **181/181** |
+| 6 | PostgreSQL-Anbindung, HTTP-Server | +12 |
+| 7 | GraphQL, Webhooks, Interface-APIContext | +39 |
+| 8 | JWT/RBAC, T-API-* HTTP-Integrationstests | +58 |
+| 9 | UC1–UC5 (CG-APP-0600), Swagger UI, PG-Test, Report | +23 |
+| **Gesamt** | | **204/204** |
 
-## Sprint 8 – Neue Features
+## Sprint 9 – Neue Features
 
-### JWT/RBAC (CG-STD-4100 Kap. 7)
-- HS256 ohne externe Bibliothek (nur `node:crypto`)
-- Rollen: `admin` > `writer` > `reader`
-- Neuer Endpunkt: `GET /v1/auth/token?role=admin|writer|reader` (Dev/Test)
-- Neue Fehlerklasse: `CG-E-012 AuthError` (4 Sub-Codes)
-- Timing-safe Vergleich (timingSafeEqual)
+### Use Cases UC1–UC5 (CG-APP-0600 v0.5)
+| UC | Domain | Granularität | Invariante |
+|---|---|---|---|
+| UC1 ATC/ACARS | Aviation v1.0 | Millisekunde | I-R1, I-R3 |
+| UC2 Legal-AT | LegalAT v1.0 | Sekunde | I-D1, I-S1 |
+| UC3 IEC 61850 | IEC61850 v1.0 | Nanosekunde | I-R1, I-R2 |
+| UC4 Cosmic | Cosmic v1.1 (Built-in) | Sekunde | CG-E-008 |
+| UC5 QKD Photon | QKDPhoton v1.0 | Nanosekunde | I-QKD-1 |
 
-### RBAC-Tabelle
-| Endpunkt | Methode | Mindestrolle |
-|---|---|---|
-| /v1/health, /v1/openapi.json, /v1/auth/token | GET | public |
-| /v1/graphql | GET | public (Playground) |
-| /v1/timepoints, /v1/domains, /v1/files, ... | GET | reader |
-| /v1/timepoints/validate, /v1/timepoints/convert | POST | reader |
-| /v1/domains/validate, /v1/relations/compute | POST | reader |
-| /v1/graphql | POST | reader |
-| /v1/timepoints, /v1/domains, /v1/files, ... | POST | writer |
-| /v1/files/:cgfi | DELETE | writer |
+### Neue Endpunkte
+- `GET /v1/docs` — Swagger UI (OpenAPI Anlage A, CG-STD-4100 Kap. 8)
+- `GET /v1/usecases` — UC1–UC5 Übersicht (public)
 
-### T-API-* HTTP-Integrationstests (35 Tests)
-- Live-HTTP-Requests gegen In-Process-Server (Port 3099)
-- Testet: 401 ohne Token, 403 falsche Rolle, CRUD mit auth
-- Kein externer Prozess nötig – alles in-process
+### Scripts
+- `pnpm pg:test` — PostgreSQL Live-Test (6 Checks: Verbindung, Tabellen, BigInt, Insert)
+- `pnpm test:report` — Conformance Report JSON (FFG-Nachweis)
 
 ## Schnellstart
 
 ```bash
 pnpm install
-pnpm test           # 181/181 Tests
+pnpm test                    # 204/204 Tests
 
-# API starten
-pnpm api:dev        # In-Memory
+pnpm api:dev                 # http://localhost:3000
+# → GET /v1/docs             # Swagger UI
+# → GET /v1/usecases         # UC1–UC5 Übersicht
+# → GET /v1/auth/token?role=writer  # Dev-Token
 
-# Token holen (Dev)
-curl http://localhost:3000/v1/auth/token?role=writer
+docker compose up -d         # PostgreSQL
+pnpm pg:test                 # DB-Check
+STORAGE=postgres pnpm api:pg # API mit PostgreSQL
 
-# Zeitpunkt erstellen
-curl -X POST http://localhost:3000/v1/timepoints \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"domain":"TAI","value":"1742041937"}'
-
-# Mit PostgreSQL
-docker compose up -d
-STORAGE=postgres pnpm api:pg
+pnpm test:report             # conformance-report.json
 ```

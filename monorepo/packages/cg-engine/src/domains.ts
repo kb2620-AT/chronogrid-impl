@@ -1,4 +1,4 @@
-import type { CTDDLDomain } from 'cg-types/domain.js';
+import type{CTDDLDomain}from'cg-types/domain.js';
 export const DOMAIN_TAI:CTDDLDomain={name:'TAI',version:'1.0',type:'linear',granularity:'second',semantics:'time',extent:{min:'0',max:'9999999999999',inclusive:true},format:{type:'integer'},metadata:{stability:'permanent'}};
 export const DOMAIN_UTC:CTDDLDomain={name:'UTC',version:'1.0',type:'piecewise-linear',granularity:'second',semantics:'time',extent:{min:'1972-01-01T00:00:00Z',max:'UNBOUNDED',inclusive:true},format:{type:'iso8601',pattern:'YYYY-MM-DDTHH:mm:ssZ'},mapping:[{targetDomain:'TAI',targetVersion:'1.0',type:'piecewise-linear',refPoints:[{source:'2017-01-01T00:00:00Z',target:'2017-01-01T00:00:37Z',label:'TAI=UTC+37'}]}],metadata:{stability:'high'}};
 export const DOMAIN_GPS:CTDDLDomain={name:'GPS',version:'1.0',type:'linear',granularity:'second',semantics:'time',extent:{min:'0',max:'9999999999',inclusive:true},format:{type:'integer'},mapping:[{targetDomain:'TAI',targetVersion:'1.0',type:'linear',refPoints:[{source:'0',target:'315964819',label:'GPS Epoch'}]}],metadata:{stability:'permanent'}};

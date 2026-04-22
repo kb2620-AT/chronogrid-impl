@@ -1,6 +1,5 @@
-import type { CGTimepoint,CGDomain,CGManifest,CGRelation,CGUASegment } from 'cg-types/domain.js';
-import { Errors } from 'cg-types/errors.js';
-import { SegmentRegistry } from 'cg-cguas/cguas.js';
+import type{CGTimepoint,CGDomain,CGManifest,CGRelation,CGUASegment}from'cg-types/domain.js';
+import{Errors}from'cg-types/errors.js';import{SegmentRegistry}from'cg-cguas/cguas.js';
 export interface ITimepointRepository{insert(tp:CGTimepoint):Promise<void>;findById(id:string):Promise<CGTimepoint|null>;list(limit?:number,offset?:number):Promise<CGTimepoint[]>;}
 export interface IDomainRepository{insert(d:CGDomain):Promise<void>;findByNameVersion(n:string,v:string):Promise<CGDomain|null>;list():Promise<CGDomain[]>;publish(n:string,v:string):Promise<void>;}
 export interface IManifestRepository{insert(m:CGManifest):Promise<void>;findByCGFI(cgfi:string):Promise<CGManifest|null>;tombstone(cgfi:string):Promise<void>;}
