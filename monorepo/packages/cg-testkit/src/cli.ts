@@ -15,6 +15,7 @@
 import { runSuite, generateReport, type SuiteResult } from './runner.js';
 import { ALL_T_ENG } from './suites/t-eng.js';
 import { ALL_T_API } from './suites/t-api.js';
+import { ALL_T_STORAGE } from './suites/t-storage.js';
 
 // ── ANSI-Farben ───────────────────────────────────────────────────────────────
 const C = {
@@ -56,6 +57,7 @@ const SUITES = [
   { name: 'T-CTDDL (Parser)',          cases: ALL_T_API.filter(t => t.suite === 'T-CTDDL') },
   { name: 'T-API (REST API)',          cases: ALL_T_API.filter(t => t.suite === 'T-API') },
   { name: 'T-CGUAS (Address Space)',   cases: ALL_T_API.filter(t => t.suite === 'T-CGUAS') },
+  { name: 'T-STORAGE (Repository)',    cases: ALL_T_STORAGE },
 ];
 
 // ── Run all suites ─────────────────────────────────────────────────────────────

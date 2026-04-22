@@ -220,3 +220,58 @@ export function makeRelationRow(
     .digest('hex');
   return { relation_id, machine_id_a: machineIdA, machine_id_b: machineIdB, relation_type: relationType, computed_at: computedAt };
 }
+
+// ── ISegmentRepository Interface ──────────────────────────────────────────────
+// Hier definiert damit repository-factory.ts es importieren kann
+// ohne auf pg-repository.ts angewiesen zu sein.
+
+export interface ISegmentRepository {
+  insert(segment: CGUASegment, grantedAt: string, grantedBy: string): Promise<void>;
+  findById(segmentId: string): Promise<CGUASegment | null>;
+  findByAddress(cgua: bigint): Promise<CGUASegment | null>;
+  listByOwner(ownerId: string): Promise<CGUASegment[]>;
+  deactivate(segmentId: string): Promise<void>;
+}
+
+// ── InMemorySegmentRepository ─────────────────────────────────────────────────
+
+export class InMemorySegmentRepository implements ISegmentRepository {
+  private readonly store = new Map<string, CGUASegment>();
+
+  async insert(segment: CGUASegment, _grantedAt: string, _grantedBy: string): Promise<void> {
+    if (this.store.has(segment.segment_id)) return; // Idempotent
+    this.store.set(segment.segment_id, Object.freeze({ ...segment }));
+  }
+
+  async findById(segmentId: string): Promise<CGUASegment | null> {
+    return this.store.get(segmentId) ?? null;
+  }
+
+  async findByAddress(cgua: bigint): Promise<CGUASegment | null> {
+    // Non-Root zuerst (spezifischstes Segment)
+    const nonRoot = [...this.store.values()].filter(
+      s => s.segment_id !== 'CG.CGUAS.ROOT' &&
+           s.start_address <= cgua && cgua < s.end_address,
+    );
+    if (nonRoot.length > 0) {
+      // Kleinstes (spezifischstes) Segment
+      return nonRoot.sort((a, b) =>
+        a.end_address - a.start_address < b.end_address - b.start_address ? -1 : 1,
+      )[0] ?? null;
+    }
+    // Root als Fallback
+    const root = this.store.get('CG.CGUAS.ROOT');
+    if (root && root.start_address <= cgua && cgua < root.end_address) return root;
+    return null;
+  }
+
+  async listByOwner(ownerId: string): Promise<CGUASegment[]> {
+    return [...this.store.values()].filter(s => s.owner_id === ownerId);
+  }
+
+  async deactivate(_segmentId: string): Promise<void> {
+    // In-Memory: kein Status-Tracking nötig
+  }
+
+  get count(): number { return this.store.size; }
+}
