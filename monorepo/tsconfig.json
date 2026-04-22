@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/cg-types" },
+    { "path": "packages/cg-ctddl" },
+    { "path": "packages/cg-engine" },
+    { "path": "packages/cg-cguas" },
+    { "path": "packages/cg-storage" },
+    { "path": "packages/cg-testkit" },
+    { "path": "apps/cg-api" }
+  ]
+}

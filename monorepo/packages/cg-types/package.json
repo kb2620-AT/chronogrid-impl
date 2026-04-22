@@ -1,0 +1,14 @@
+{
+  "name": "cg-types",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ChronoGrid — Gemeinsame Typen, Fehlerklassen, DTOs (CG-STD-2100 Kap. 9)",
+  "exports": {
+    ".":           { "import": "./src/index.ts" },
+    "./errors.js": { "import": "./src/errors.ts" },
+    "./domain.js": { "import": "./src/domain.ts" }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  }
+}

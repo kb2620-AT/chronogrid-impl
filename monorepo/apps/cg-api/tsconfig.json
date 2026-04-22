@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/cg-types" },
+    { "path": "../../packages/cg-ctddl" },
+    { "path": "../../packages/cg-engine" },
+    { "path": "../../packages/cg-cguas" },
+    { "path": "../../packages/cg-storage" }
+  ]
+}

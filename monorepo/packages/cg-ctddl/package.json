@@ -1,0 +1,16 @@
+{
+  "name": "cg-ctddl",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ChronoGrid — CTDDL-Parser und 7-Stufen-Validator (CG-STD-2100 v1.4)",
+  "exports": {
+    ".":            { "import": "./src/index.ts" },
+    "./parser.js":  { "import": "./src/parser.ts" }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "cg-types": "workspace:*"
+  }
+}

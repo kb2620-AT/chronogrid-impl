@@ -1,0 +1,17 @@
+{
+  "name": "cg-cguas",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ChronoGrid — Universal Address Space: Segment-Verwaltung, CGUA-Arithmetik (CG-STD-6100 Teil A)",
+  "exports": {
+    ".":            { "import": "./src/index.ts" },
+    "./cguas.js":   { "import": "./src/cguas.ts" }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "cg-types":  "workspace:*",
+    "cg-engine": "workspace:*"
+  }
+}

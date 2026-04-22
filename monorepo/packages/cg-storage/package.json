@@ -1,0 +1,17 @@
+{
+  "name": "cg-storage",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ChronoGrid — Repository-Layer und PostgreSQL-Schema (CG-STD-4100 Kap. 3)",
+  "exports": {
+    ".":                  { "import": "./src/index.ts" },
+    "./repository.js":    { "import": "./src/repository.ts" }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "cg-types":  "workspace:*",
+    "cg-cguas":  "workspace:*"
+  }
+}
