@@ -1,120 +1,141 @@
 /**
  * cg-types/src/domain.ts
- * Kerndatentypen für CTDDL-Domains — CG-STD-2100 v1.4
- * Alle Typen sind normativ. Kommentare referenzieren Kapitel.
+ * CTDDL Domain-Typen — CG-STD-2100 v1.4
  */
 
-// ── Domain-Semantik (CG-STD-2100 Kap. 4.1) ──────────────────────────────────
-export type DomainSemantics = 'time' | 'address' | 'filetype';
+export type DomainType = 'linear' | 'piecewise-linear' | 'nonlinear' | 'relativistic' | 'discrete';
+export type Granularity = 'nanosecond'|'microsecond'|'millisecond'|'second'|'minute'|'hour'|'day'|'week'|'month'|'year'|'decade'|'century'|'millennium'|'megayear'|'gigayear';
+export type Semantics = 'time' | 'address' | 'filetype';
+export type Stability = 'permanent' | 'high' | 'medium' | 'low';
 
-// ── Domain-Typ (CG-STD-2100 Kap. 4.2) ────────────────────────────────────────
-export type DomainType =
-  | 'linear'
-  | 'piecewise-linear'
-  | 'nonlinear'
-  | 'relativistic'
-  | 'discrete';
+export interface Extent {
+  min: string | number;
+  max: string | number;
+  inclusive: boolean;
+}
 
-// ── Mapping-Klasse (CG-STD-2100 Kap. 5) ──────────────────────────────────────
-export type MappingClass = 'A' | 'B';
+export interface HierarchyEntry {
+  unit: string;
+  factor: number | { type: 'variable'; rule: string };
+  baseSeconds?: number;
+}
 
-// ── Stability (CG-STD-2100 Kap. 6.4) ─────────────────────────────────────────
-export type DomainStability = 'high' | 'medium' | 'low';
+export interface FormatSpec {
+  type: 'iso8601' | 'integer' | 'decimal' | 'custom';
+  pattern?: string;
+}
 
-// ── scientific_dependency (CG-STD-2100 Kap. 6.4) ─────────────────────────────
+export interface RefPoint {
+  source: string;
+  target: string;
+  label?: string;
+}
+
+export interface MappingRule {
+  targetDomain: string;
+  targetVersion: string;
+  type: 'linear' | 'piecewise-linear' | 'nonlinear' | 'relativistic';
+  refPoints?: RefPoint[];
+  segments?: Array<{ from: string; to: string; refPoints: RefPoint[] }>;
+  expr?: string;
+}
+
 export interface ScientificDependency {
-  model: string;           // z.B. "Planck-2018"
-  reference: string;       // Vollständige Literaturangabe
-  [key: string]: unknown;  // weitere Parameter (H0, etc.)
+  parameter: string;
+  value: string;
+  uncertainty_abs?: string;
+  uncertainty_rel: string;
+  source: string;
+  source_doi: string;
+  review_trigger: string;
 }
 
-// ── Mapping-Block (CG-STD-2100 Kap. 5) ───────────────────────────────────────
-export interface MappingBlock {
-  targetDomain: string;     // Name der Ziel-Domain
-  targetVersion: number;    // Version der Ziel-Domain
-  class: MappingClass;      // A = piecewise-linear, B = relativistisch
-  function: string;         // Name der Mapping-Funktion
-  leapSecondsRef?: string;  // für piecewise-linear UTC↔TAI
-  accuracy?: number;        // für Klasse-B (Fehlertoleranz s/s)
-  [key: string]: unknown;
+export interface Metadata {
+  stability: Stability;
+  scientific_dependency?: ScientificDependency;
+  notes?: string;
 }
 
-// ── CTDDL-Domain-Definition (CG-STD-2100 Kap. 4) ─────────────────────────────
 export interface CTDDLDomain {
-  name: string;             // Pflicht: Domain-Name z.B. "aviation/atc-event"
-  version: number;          // Pflicht: positive integer
-  semantics: DomainSemantics; // Pflicht (NEU v1.2): 'time' | 'address' | 'filetype'
-  type: DomainType;         // Pflicht
-  granularity: string;      // Pflicht: Nanosekunden als String (BigInt-sicher)
-  description?: string;     // Optional
-  stability?: DomainStability; // Optional
-  extent: {
-    min: string | null;     // BigInt als String, null = unbegrenzt rückwärts
-    max: string | null;     // BigInt als String, null = unbegrenzt vorwärts
-  };
-  epoch: {
-    reference: string;      // ISO 8601 UTC-String
-    tai_offset: number;     // TAI-UTC-Offset zum Referenzzeitpunkt (Sekunden)
-    rationale?: string;     // Optional
-  };
-  mappings?: MappingBlock[];  // Optional: Klasse-A oder Klasse-B
-  scientific_dependency?: ScientificDependency; // Pflicht wenn stability=low|medium
-  deprecated?: boolean;       // Optional, Standard: false
-  migration_to?: string;      // Optional, wenn deprecated=true
-  [key: string]: unknown;
+  name: string;
+  version: string;
+  type: DomainType;
+  granularity: Granularity;
+  semantics?: Semantics;
+  extent: Extent;
+  hierarchy?: HierarchyEntry[];
+  format?: FormatSpec;
+  mapping?: MappingRule[];
+  metadata?: Metadata;
 }
 
-// ── CGTA — ChronoGrid Time Address (CG-STD-3100 Kap. 3.3) ───────────────────
-// Format: "CG:<domain>:<value>/v<version>"
-// Beispiel: "CG:TAI:1743585310000000000/v1"
+/** CGTA – ChronoGrid Time Address */
 export interface CGTA {
-  domain: string;        // Domain-Name
-  value: bigint;         // ℤ∞ — Zeitwert in Nanosekunden (granularitätsnormiert)
-  version: number;       // Domain-Version
-  sigma?: bigint;        // Messunsicherheit in Nanosekunden (optional, CG-STD-6100)
-}
-
-// ── String-Kodierung (normativ) ───────────────────────────────────────────────
-export function encodeCGTA(cgta: CGTA): string {
-  const sig = cgta.sigma !== undefined ? `:σ${cgta.sigma}` : '';
-  return `CG:${cgta.domain}:${cgta.value}${sig}/v${cgta.version}`;
-}
-
-// Regex für CGTA-Parsing (ABNF CG-STD-2100 Kap. 4.1)
-const CGTA_REGEX = /^CG:([^:]+):(-?\d+)(?::σ(\d+))?\/v(\d+)$/;
-
-export function parseCGTA(raw: string): CGTA {
-  const m = CGTA_REGEX.exec(raw);
-  if (!m) {
-    throw new Error(`CG-E-001.007: Ungültiges CGTA-Format: ${raw}`);
-  }
-  return {
-    domain: m[1],
-    value: BigInt(m[2]),
-    sigma: m[3] !== undefined ? BigInt(m[3]) : undefined,
-    version: parseInt(m[4], 10),
-  };
-}
-
-// ── Allen-Intervall (CG-STD-3100 Kap. 9) ─────────────────────────────────────
-export interface CGInterval {
-  start: bigint;  // Inklusiv
-  end: bigint;    // Inklusiv (für Punktereignisse: start === end)
   domain: string;
+  value: bigint;
+  timezone?: 'UTC' | 'TAI' | 'none';
   version: number;
 }
 
-// ── MachineID-Struktur (CG-STD-3100 Kap. 5.1) ────────────────────────────────
-// SHA-256 über kanonisch serialisierten TAI-Wert (BigInt, Big-Endian)
-export type MachineID = Uint8Array; // 32 Bytes
+/** CGTimepoint – normatives Datenmodell (CG-STD-4100 Kap. 3.2) */
+export interface CGTimepoint {
+  machine_id: string;        // SHA-256 Primärschlüssel
+  domain_name: string;
+  domain_version: string;
+  absolute_value: bigint;    // ℤ∞ – BigInt
+  cgta: string;              // Serialisierte CGTA
+  labels: Record<string, string>;
+  created_at: bigint;        // TAI-Nanosekunden
+}
 
-// ── CGFI (CG-STD-3100 Kap. 5.4) ──────────────────────────────────────────────
-// SHA-256 über: tai_prefix || tai_sign || tai_bytes || content_hash || type_bytes
-export type CGFI = Uint8Array; // 32 Bytes
+/** CGDomain – Registry-Eintrag */
+export interface CGDomain {
+  name: string;
+  version: string;
+  definition: CTDDLDomain;
+  published: boolean;
+  published_at?: bigint;
+  created_at: bigint;
+}
 
-// ── Konformitätslevel (CG-STD-3100 Kap. 11) ──────────────────────────────────
-export type ConformanceLevel = 1 | 2 | 3;
+/** CGManifest – Datei-Fingerabdruck (CGFI) */
+export interface CGManifest {
+  cgfi: string;              // SHA-256 Fingerabdruck
+  tai_timepoint: string;     // MachineID des TAI-Zeitpunkts
+  content_hash: string;      // SHA-256 des Datei-Inhalts
+  type_id: string;           // FileType-ID
+  size_bytes: bigint;
+  metadata: Record<string, string>;
+  tombstone: boolean;
+  created_at: bigint;
+}
 
-// ── Fehlerstruktur re-export ──────────────────────────────────────────────────
-export { CGError, Errors } from './errors.js';
-export type { CGErrorStructure } from './errors.js';
+/** CGRelation – Allen-Relation Ergebnis */
+export interface CGRelation {
+  id: string;
+  timepoint_a: string;
+  timepoint_b: string;
+  relation: AllenRelation;
+  computed_at: bigint;
+}
+
+/** Allen-Relationen (CG-STD-3100 Kap. 9) */
+export type AllenRelation =
+  | 'BEFORE' | 'AFTER'
+  | 'MEETS' | 'MET_BY'
+  | 'OVERLAPS' | 'OVERLAPPED_BY'
+  | 'STARTS' | 'STARTED_BY'
+  | 'DURING' | 'CONTAINS'
+  | 'FINISHES' | 'FINISHED_BY'
+  | 'EQUALS';
+
+/** CGUASegment – Adressraum-Segment (CG-STD-6100 Teil A) */
+export interface CGUASegment {
+  id: string;
+  parent_id: string | null;
+  base_address: bigint;
+  size_ns: bigint;
+  granted_by: string;
+  status: 'active' | 'reserved' | 'revoked';
+  created_at: bigint;
+}

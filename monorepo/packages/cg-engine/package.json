@@ -2,7 +2,6 @@
   "name": "cg-engine",
   "version": "1.0.0",
   "type": "module",
-  "description": "ChronoGrid — Engine-Kern: Encode/Decode, BigInt, Mapping, MachineID, CGFI, Allen (CG-STD-3100 v1.5)",
   "exports": {
     ".":              { "import": "./src/index.ts" },
     "./engine.js":    { "import": "./src/engine.ts" },
@@ -10,11 +9,6 @@
     "./mapping.js":   { "import": "./src/mapping.ts" },
     "./domains.js":   { "import": "./src/domains.ts" }
   },
-  "scripts": {
-    "build": "tsc --build"
-  },
-  "dependencies": {
-    "cg-types": "workspace:*",
-    "cg-ctddl": "workspace:*"
-  }
+  "scripts": { "build": "tsc --build" },
+  "dependencies": { "cg-types": "workspace:*", "cg-ctddl": "workspace:*" }
 }

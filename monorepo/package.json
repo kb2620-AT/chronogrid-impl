@@ -1,25 +1,23 @@
 {
   "name": "chronogrid-refimpl",
-  "version": "1.0.0",
+  "version": "0.7.0",
   "private": true,
   "description": "ChronoGrid Reference Implementation — CG-APP-0700 v0.3",
+  "type": "module",
   "scripts": {
-    "build":        "tsc --build",
-    "test":         "pnpm --filter cg-testkit run test",
-    "test:level1":  "pnpm --filter cg-testkit run test:level1",
-    "test:level2":  "pnpm --filter cg-testkit run test:level2",
-    "test:level3":  "pnpm --filter cg-testkit run test:level3",
-    "test:json":    "pnpm --filter cg-testkit run test:json",
-    "report":       "pnpm --filter cg-testkit run report",
-    "lint":         "eslint packages/*/src apps/*/src --ext .ts",
-    "clean":        "find . -name dist -type d -not -path '*/node_modules/*' | xargs rm -rf"
+    "build":      "tsc --build",
+    "test":       "node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3",
+    "test:l1":    "node --import tsx/esm packages/cg-testkit/src/cli.ts --level 1",
+    "test:l2":    "node --import tsx/esm packages/cg-testkit/src/cli.ts --level 2",
+    "test:l3":    "node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3",
+    "api:dev":    "node --import tsx/esm apps/cg-api/src/server.ts",
+    "api:pg":     "STORAGE=postgres node --import tsx/esm apps/cg-api/src/server.ts",
+    "docker:up":  "docker compose up -d",
+    "docker:down":"docker compose down"
   },
   "devDependencies": {
-    "typescript":            "^5.4.0",
-    "tsx":                   "^4.7.0",
-    "@types/node":           "^20.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser":        "^7.0.0",
-    "eslint":                "^8.57.0"
+    "typescript":  "^5.4.0",
+    "tsx":         "^4.7.0",
+    "@types/node": "^20.0.0"
   }
 }

@@ -1,17 +1,17 @@
 {
   "compilerOptions": {
-    "target":              "ES2022",
-    "module":              "NodeNext",
-    "moduleResolution":    "NodeNext",
-    "lib":                 ["ES2022"],
-    "strict":              true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
     "exactOptionalPropertyTypes": false,
-    "esModuleInterop":     false,
-    "skipLibCheck":        true,
-    "declaration":         true,
-    "declarationMap":      true,
-    "sourceMap":           true,
-    "outDir":              "./dist",
-    "rootDir":             "./src"
+    "noUncheckedIndexedAccess": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   }
 }

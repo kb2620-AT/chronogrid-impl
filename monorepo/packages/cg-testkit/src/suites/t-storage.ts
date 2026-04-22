@@ -1,295 +1,178 @@
 /**
  * cg-testkit/src/suites/t-storage.ts
- * T-STORAGE — Normative Storage-Tests (CG-STD-4100 v0.7 Kap. 3)
- *
- * Testet:
- * - Insert-only Semantik (I-D1, I-S1)
- * - Idempotenz (CG-STD-4100 Kap. 2.2)
- * - BigInt-Handling (NUMERIC(30), kein Float)
- * - Logisches Löschen (DSGVO Art. 17)
- * - Versionschain (manifests)
- * - Segment-Auflösung (Root-Fallback, CG-APP-0700 §13.2)
- *
- * Läuft mit In-Memory-Backend (kein PostgreSQL erforderlich für CI).
- * Für PostgreSQL-Tests: STORAGE=postgres + laufende DB.
+ * Storage + API Tests — CG-STD-4100 v0.7 Kap. 3
  */
 
 import type { TestCase } from '../runner.js';
 import {
-  InMemoryTimepointRepository,
-  InMemoryDomainRepository,
-  InMemoryManifestRepository,
-  InMemoryRelationRepository,
-  InMemorySegmentRepository,
-  makeRelationRow,
-  makeDomainId,
+  InMemoryTimepointRepository, InMemoryDomainRepository,
+  InMemoryManifestRepository, InMemoryRelationRepository, InMemorySegmentRepository,
 } from 'cg-storage/repository.js';
-import type { TimepointRow, ManifestRow } from 'cg-storage/repository.js';
-import { DOMAIN_TAI_V1, DOMAIN_GREGORIAN_V2 } from 'cg-engine/domains.js';
-import { computeMachineID, machineIdToHex, computeCGFI, cgfiToHex } from 'cg-engine/engine.js';
+import { createRepositories } from 'cg-storage/repository-factory.js';
+import { createTimepoint, computeCGFI } from 'cg-engine/engine.js';
+import type { CGDomain, CGManifest, CGRelation } from 'cg-types/domain.js';
 
-// ── T-STORAGE-01x: Timepoint Repository ──────────────────────────────────────
+export const storageTests: TestCase[] = [
 
-export const T_STORAGE_01: TestCase[] = [
-  {
-    id: 'T-STORAGE-010', suite: 'T-STORAGE', level: 1,
-    description: 'Insert-only: Zeitpunkt einfügen und wieder abrufen',
-    fn: async () => {
-      const repo = new InMemoryTimepointRepository();
-      const mid = machineIdToHex(computeMachineID(1000000000n));
-      const row: TimepointRow = {
-        machine_id:     mid,
-        cgta_string:    'CG:TAI:1000000000/v1',
-        domain_id:      'TAI/v1',
-        absolute_value: 1000000000n,
-        granularity:    'nanosecond',
-        created_at:     'CG:TAI:1000000000/v1',
-        created_by:     'test',
-      };
-      await repo.insert(row);
-      const found = await repo.findByMachineId(mid);
-      if (!found) throw new Error('Zeitpunkt nicht gefunden nach Insert');
-      if (found.absolute_value !== 1000000000n) throw new Error('absolute_value falsch');
-      if (typeof found.absolute_value !== 'bigint') throw new Error('absolute_value muss bigint sein');
-      return true;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-011', suite: 'T-STORAGE', level: 1,
-    description: 'Idempotenz: Doppelter Insert derselben machine_id → kein Fehler',
-    fn: async () => {
-      const repo = new InMemoryTimepointRepository();
-      const mid = machineIdToHex(computeMachineID(42n));
-      const row: TimepointRow = {
-        machine_id: mid, cgta_string: 'CG:TAI:42/v1',
-        domain_id: 'TAI/v1', absolute_value: 42n,
-        granularity: 'nanosecond', created_at: 'CG:TAI:42/v1', created_by: 'test',
-      };
-      await repo.insert(row);
-      // Zweiter Insert — muss entweder kein Fehler oder Conflict sein
-      let threw = false;
-      try { await repo.insert(row); } catch { threw = true; }
-      // Idempotenz: bestehender Eintrag bleibt unverändert
-      const found = await repo.findByMachineId(mid);
-      if (!found) throw new Error('Zeitpunkt verschwunden nach zweitem Insert');
-      return true;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-012', suite: 'T-STORAGE', level: 1,
-    description: 'findByMachineId: nicht existierende ID → null',
-    fn: async () => {
-      const repo = new InMemoryTimepointRepository();
-      const result = await repo.findByMachineId('a'.repeat(64));
-      return result === null;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-013', suite: 'T-STORAGE', level: 1,
-    description: 'BigInt-Invariante: absolute_value bleibt bigint nach Roundtrip',
-    fn: async () => {
-      const repo = new InMemoryTimepointRepository();
-      // Cosmic-Domain-Wert: ~4.35×10²³ (weit über INT64)
-      const cosmicValue = 435116774400000000000000n;
-      const mid = machineIdToHex(computeMachineID(cosmicValue));
-      await repo.insert({
-        machine_id: mid, cgta_string: `CG:Cosmic:${cosmicValue}/v1`,
-        domain_id: 'Cosmic/v1', absolute_value: cosmicValue,
-        granularity: 'nanosecond', created_at: 'CG:TAI:1000/v1', created_by: 'test',
-      });
-      const found = await repo.findByMachineId(mid);
-      if (!found) throw new Error('Cosmic-Zeitpunkt nicht gefunden');
-      if (found.absolute_value !== cosmicValue) {
-        throw new Error(`BigInt-Verlust: ${found.absolute_value} !== ${cosmicValue}`);
-      }
-      return true;
-    },
-    expected: true,
-  },
-];
+  { id: 'T-STORAGE-001', level: 1, description: 'InMemory createRepositories – backend=memory',
+    run: () => createRepositories(undefined, 'memory').backend,
+    expected: 'memory' },
 
-// ── T-STORAGE-02x: Domain Repository ─────────────────────────────────────────
+  { id: 'T-STORAGE-002', level: 1, description: 'TimepointRepository – insert + findById',
+    run: async () => {
+      const repo = new InMemoryTimepointRepository();
+      const tp = createTimepoint('TAI', '1.0', 1742041937n);
+      await repo.insert(tp);
+      const found = await repo.findById(tp.machine_id);
+      return found?.machine_id === tp.machine_id;
+    },
+    expected: true },
 
-export const T_STORAGE_02: TestCase[] = [
-  {
-    id: 'T-STORAGE-020', suite: 'T-STORAGE', level: 1,
-    description: 'Domain einfügen und abrufen (I-D1)',
-    fn: async () => {
+  { id: 'T-STORAGE-003', level: 1, description: 'TimepointRepository – findById nicht gefunden → null',
+    run: async () => {
+      const repo = new InMemoryTimepointRepository();
+      return await repo.findById('nonexistent');
+    },
+    expected: null },
+
+  { id: 'T-STORAGE-004', level: 1, description: 'TimepointRepository – list gibt Array zurück',
+    run: async () => {
+      const repo = new InMemoryTimepointRepository();
+      const tp1 = createTimepoint('TAI','1.0',1n);
+      const tp2 = createTimepoint('TAI','1.0',2n);
+      await repo.insert(tp1); await repo.insert(tp2);
+      const list = await repo.list();
+      return list.length;
+    },
+    expected: 2 },
+
+  { id: 'T-STORAGE-005', level: 1, description: 'DomainRepository – insert + findByNameVersion',
+    run: async () => {
       const repo = new InMemoryDomainRepository();
-      await repo.insert(DOMAIN_TAI_V1, 'CG:TAI:1000/v1', 'system');
-      const found = await repo.findById('TAI/v1');
-      if (!found) throw new Error('TAI Domain nicht gefunden');
-      if (found.name !== 'TAI') throw new Error('Name falsch');
-      return true;
+      const d: CGDomain = { name:'TestD', version:'1.0', definition:{} as never, published:false, created_at:1n };
+      await repo.insert(d);
+      const found = await repo.findByNameVersion('TestD','1.0');
+      return found?.name;
     },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-021', suite: 'T-STORAGE', level: 1,
-    description: 'Domain list() gibt alle Domains zurück',
-    fn: async () => {
+    expected: 'TestD' },
+
+  { id: 'T-STORAGE-006', level: 1, description: 'DomainRepository – Duplikat → SemanticError',
+    run: async () => {
       const repo = new InMemoryDomainRepository();
-      await repo.insert(DOMAIN_TAI_V1, 'CG:TAI:1/v1', 'system');
-      await repo.insert(DOMAIN_GREGORIAN_V2, 'CG:TAI:2/v1', 'system');
-      const all = await repo.list();
-      return all.length === 2;
+      const d: CGDomain = { name:'DupD', version:'1.0', definition:{} as never, published:false, created_at:1n };
+      await repo.insert(d);
+      try { await repo.insert(d); return false; }
+      catch(e) { return (e as {code:string}).code === 'CG-E-002.001'; }
     },
-    expected: true,
-  },
-];
+    expected: true },
 
-// ── T-STORAGE-03x: Manifest Repository (CGFS) ────────────────────────────────
-
-export const T_STORAGE_03: TestCase[] = [
-  {
-    id: 'T-STORAGE-030', suite: 'T-STORAGE', level: 2,
-    description: 'Manifest einfügen und abrufen',
-    fn: async () => {
-      const repo = new InMemoryManifestRepository();
-      const content = new TextEncoder().encode('test content');
-      const cgfi = cgfiToHex(computeCGFI(1000n, content, 'legal/contract/v1', 0));
-      const row: ManifestRow = {
-        cgfi, cgfs_version: '1.0', type_id: 'legal/contract/v1',
-        type_schema: 'cgfs://types/legal/contract/v1',
-        created_at: 'CG:TAI:1000/v1', content_hash: 'a'.repeat(64),
-        created_by: 'test', access_level: 'restricted',
-      };
-      await repo.insert(row);
-      const found = await repo.findByCGFI(cgfi);
-      if (!found) throw new Error('Manifest nicht gefunden');
-      return found.cgfi === cgfi;
+  { id: 'T-STORAGE-007', level: 1, description: 'DomainRepository – publish setzt published=true',
+    run: async () => {
+      const repo = new InMemoryDomainRepository();
+      const d: CGDomain = { name:'PubD', version:'1.0', definition:{} as never, published:false, created_at:1n };
+      await repo.insert(d);
+      await repo.publish('PubD','1.0');
+      const found = await repo.findByNameVersion('PubD','1.0');
+      return found?.published;
     },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-031', suite: 'T-STORAGE', level: 2,
-    description: 'Logisches Löschen (DSGVO Art. 17) — Tombstone, kein hartes DELETE',
-    fn: async () => {
+    expected: true },
+
+  { id: 'T-STORAGE-008', level: 1, description: 'ManifestRepository – insert + findByCGFI',
+    run: async () => {
       const repo = new InMemoryManifestRepository();
-      const cgfi = 'b'.repeat(64);
-      const row: ManifestRow = {
-        cgfi, cgfs_version: '1.0', type_id: 'legal/contract/v1',
-        type_schema: 'cgfs://types/legal/contract/v1',
-        created_at: 'CG:TAI:1000/v1', content_hash: 'c'.repeat(64),
-        created_by: 'test', access_level: 'restricted',
-      };
-      await repo.insert(row);
-      await repo.softDelete(cgfi, 'CG:TAI:2000/v1', 'dsgvo_art17');
+      const cgfi = computeCGFI('tai','hash','pdf');
+      const m: CGManifest = { cgfi, tai_timepoint:'tai', content_hash:'hash', type_id:'pdf',
+        size_bytes:1024n, metadata:{}, tombstone:false, created_at:1n };
+      await repo.insert(m);
       const found = await repo.findByCGFI(cgfi);
-      // Eintrag bleibt (Tombstone), deleted_at gesetzt
-      if (!found) throw new Error('Tombstone-Manifest verschwunden — kein hartes Delete erlaubt');
-      if (!found.deleted_at) throw new Error('deleted_at nicht gesetzt');
-      if (found.cgfi !== cgfi) throw new Error('CGFI verändert — Invariante verletzt');
+      return found?.cgfi === cgfi;
+    },
+    expected: true },
+
+  { id: 'T-STORAGE-009', level: 1, description: 'ManifestRepository – tombstone',
+    run: async () => {
+      const repo = new InMemoryManifestRepository();
+      const cgfi = computeCGFI('t','h','pdf');
+      const m: CGManifest = { cgfi, tai_timepoint:'t', content_hash:'h', type_id:'pdf',
+        size_bytes:0n, metadata:{}, tombstone:false, created_at:1n };
+      await repo.insert(m);
+      await repo.tombstone(cgfi);
+      const found = await repo.findByCGFI(cgfi);
+      return found?.tombstone;
+    },
+    expected: true },
+
+  { id: 'T-STORAGE-010', level: 1, description: 'TimepointRepository – absolute_value als BigInt',
+    run: async () => {
+      const repo = new InMemoryTimepointRepository();
+      const tp = createTimepoint('TAI','1.0',9999999999n);
+      await repo.insert(tp);
+      const found = await repo.findById(tp.machine_id);
+      if (typeof found?.absolute_value !== 'bigint') throw new Error('absolute_value muss bigint sein');
       return true;
     },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-032', suite: 'T-STORAGE', level: 2,
-    description: 'Versionschain: getVersionChain gibt Kette zurück',
-    fn: async () => {
-      const repo = new InMemoryManifestRepository();
-      const cgfi1 = '1'.repeat(64);
-      const cgfi2 = '2'.repeat(64);
-      await repo.insert({
-        cgfi: cgfi1, cgfs_version: '1.0', type_id: 'legal/contract/v1',
-        type_schema: 'cgfs://types', created_at: 'CG:TAI:100/v1',
-        content_hash: 'a'.repeat(64), created_by: 'test', access_level: 'restricted',
-      });
-      await repo.insert({
-        cgfi: cgfi2, cgfs_version: '1.0', type_id: 'legal/contract/v1',
-        type_schema: 'cgfs://types', created_at: 'CG:TAI:200/v1',
-        content_hash: 'b'.repeat(64), created_by: 'test', access_level: 'restricted',
-        prev_version: cgfi1,
-      });
-      const chain = await repo.getVersionChain(cgfi2);
-      return chain.length === 2;
-    },
-    expected: true,
-  },
-];
+    expected: true },
 
-// ── T-STORAGE-04x: Segment Repository (CGUAS) ────────────────────────────────
-
-export const T_STORAGE_04: TestCase[] = [
-  {
-    id: 'T-STORAGE-040', suite: 'T-STORAGE', level: 2,
-    description: 'Segment einfügen und nach Adresse auflösen',
-    fn: async () => {
-      const repo = new InMemorySegmentRepository();
-      const seg = {
-        segment_id: 'test.org', owner_id: 'test.org',
-        start_address: 1000n, end_address: 2000n, size_ns: 1000n, parent_id: null, granted_by: "system", status: "active" as const,
-        granted_at: 'CG:TAI:1/v1', integrity_hash: 'a'.repeat(64), level: 3,
-      };
-      await repo.insert(seg, 'CG:TAI:1/v1', 'system');
-      const found = await repo.findByAddress(1500n);
-      if (!found) throw new Error('Segment nicht gefunden für Adresse 1500');
-      return found.segment_id === 'test.org';
-    },
-    expected: true,
-  },
-  {
-    id: 'T-STORAGE-041', suite: 'T-STORAGE', level: 2,
-    description: 'Root-Fallback: Adresse ohne spezifisches Segment → Root',
-    fn: async () => {
-      const repo = new InMemorySegmentRepository();
-      // Root-Segment (gesamter 79-Bit-Adressraum)
-      const root = {
-        segment_id: 'CG.CGUAS.ROOT', owner_id: 'ChronoGrid',
-        start_address: 0n,
-        end_address: BigInt(2) ** BigInt(79) - BigInt(1), size_ns: BigInt(2) ** BigInt(79) - BigInt(1), parent_id: null, granted_by: 'system', status: 'active' as const,
-        granted_at: 'CG:TAI:0/v1', integrity_hash: 'r'.repeat(64), level: 0,
-      };
-      await repo.insert(root, 'CG:TAI:0/v1', 'system');
-      // Spezifisches Segment für Adressbereich 0–999
-      const specific = {
-        segment_id: 'specific.org', owner_id: 'specific.org',
-        start_address: 0n, end_address: 1000n, size_ns: 1000n, parent_id: null, granted_by: 'system', status: 'active' as const,
-        granted_at: 'CG:TAI:1/v1', integrity_hash: 'b'.repeat(64), level: 3,
-      };
-      await repo.insert(specific, 'CG:TAI:1/v1', 'system');
-      // Adresse 500 → specific.org (nicht Root)
-      const foundSpecific = await repo.findByAddress(500n);
-      if (foundSpecific?.segment_id !== 'specific.org') throw new Error('Spezifisches Segment nicht gefunden');
-      // Adresse 5000 → Root (kein spezifisches Segment)
-      const foundRoot = await repo.findByAddress(5000n);
-      if (foundRoot?.segment_id !== 'CG.CGUAS.ROOT') throw new Error('Root-Fallback fehlgeschlagen');
-      return true;
-    },
-    expected: true,
-  },
-];
-
-// ── T-STORAGE-05x: Relation Repository ───────────────────────────────────────
-
-export const T_STORAGE_05: TestCase[] = [
-  {
-    id: 'T-STORAGE-050', suite: 'T-STORAGE', level: 2,
-    description: 'Relation einfügen und abrufen — relation_id = SHA-256(a||b||type)',
-    fn: async () => {
+  { id: 'T-STORAGE-011', level: 1, description: 'RelationRepository – insert + list',
+    run: async () => {
       const repo = new InMemoryRelationRepository();
-      const midA = 'a'.repeat(64);
-      const midB = 'b'.repeat(64);
-      const row = makeRelationRow(midA, midB, 'before', 'CG:TAI:1000/v1');
-      await repo.insert(row);
-      const found = await repo.findByPair(midA, midB);
-      if (found.length === 0) throw new Error('Relation nicht gefunden');
-      return found[0]?.relation_type === 'before';
+      const r: CGRelation = { id:'r1', timepoint_a:'a', timepoint_b:'b', relation:'BEFORE', computed_at:1n };
+      await repo.insert(r);
+      const list = await repo.list();
+      return list.length;
     },
-    expected: true,
-  },
-];
+    expected: 1 },
 
-// ── Alle T-STORAGE Tests ──────────────────────────────────────────────────────
+  { id: 'T-STORAGE-012', level: 1, description: 'SegmentRepository – allocate + resolve',
+    run: async () => {
+      const repo = new InMemorySegmentRepository();
+      const seg = await repo.allocate('test', 1_000_000n);
+      const found = await repo.resolve(seg.id);
+      return found.status;
+    },
+    expected: 'active' },
 
-export const ALL_T_STORAGE: TestCase[] = [
-  ...T_STORAGE_01,
-  ...T_STORAGE_02,
-  ...T_STORAGE_03,
-  ...T_STORAGE_04,
-  ...T_STORAGE_05,
+  { id: 'T-STORAGE-013', level: 2, description: 'SegmentRepository – revoke',
+    run: async () => {
+      const repo = new InMemorySegmentRepository();
+      const seg = await repo.allocate('test', 1_000_000n);
+      await repo.revoke(seg.id);
+      try { await repo.resolve(seg.id); return false; }
+      catch(e) { return (e as {code:string}).code === 'CG-E-010.004'; }
+    },
+    expected: true },
+
+  { id: 'T-STORAGE-014', level: 2, description: 'SegmentRepository – list',
+    run: async () => {
+      const repo = new InMemorySegmentRepository();
+      await repo.allocate('a', 1_000n);
+      await repo.allocate('b', 2_000n);
+      const list = await repo.list();
+      return list.length;
+    },
+    expected: 2 },
+
+  { id: 'T-STORAGE-015', level: 2, description: 'DomainRepository – list nach insert',
+    run: async () => {
+      const repo = new InMemoryDomainRepository();
+      const d1: CGDomain = { name:'A', version:'1.0', definition:{} as never, published:false, created_at:1n };
+      const d2: CGDomain = { name:'B', version:'1.0', definition:{} as never, published:false, created_at:2n };
+      await repo.insert(d1); await repo.insert(d2);
+      return (await repo.list()).length;
+    },
+    expected: 2 },
+
+  { id: 'T-STORAGE-016', level: 3, description: 'I-S1: Tombstone ist nicht reversibel (Insert-only)',
+    run: async () => {
+      const repo = new InMemoryManifestRepository();
+      const cgfi = computeCGFI('x','y','z');
+      const m: CGManifest = { cgfi, tai_timepoint:'x', content_hash:'y', type_id:'z',
+        size_bytes:0n, metadata:{}, tombstone:false, created_at:1n };
+      await repo.insert(m);
+      await repo.tombstone(cgfi);
+      // I-S1: kein Update zurück – Tombstone bleibt
+      const found = await repo.findByCGFI(cgfi);
+      return found?.tombstone === true;
+    },
+    expected: true },
 ];

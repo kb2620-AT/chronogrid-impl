@@ -1,1 +1,1 @@
-export { parseCTDDL, DomainRegistry } from './parser.js';
+export * from './parser.js';

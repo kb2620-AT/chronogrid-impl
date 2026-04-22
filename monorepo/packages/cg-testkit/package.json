@@ -2,17 +2,11 @@
   "name": "cg-testkit",
   "version": "1.0.0",
   "type": "module",
-  "description": "ChronoGrid Conformance Testkit — CG-STD-3100 v1.5 + CG-STD-4100 v0.7",
-  "bin": {
-    "cg-testkit": "./src/cli.ts"
-  },
   "scripts": {
-    "test":        "node --import tsx/esm src/cli.ts",
-    "test:level1": "node --import tsx/esm src/cli.ts --level 1",
-    "test:level2": "node --import tsx/esm src/cli.ts --level 2",
-    "test:level3": "node --import tsx/esm src/cli.ts --level 3",
-    "test:json":   "node --import tsx/esm src/cli.ts --json",
-    "report":      "node --import tsx/esm src/cli.ts --level 3 --output conformance-report.json"
+    "test":    "node --import tsx/esm src/cli.ts --level 3",
+    "test:l1": "node --import tsx/esm src/cli.ts --level 1",
+    "test:l2": "node --import tsx/esm src/cli.ts --level 2",
+    "test:l3": "node --import tsx/esm src/cli.ts --level 3"
   },
   "dependencies": {
     "cg-types":   "workspace:*",
@@ -23,8 +17,8 @@
     "cg-api":     "workspace:*"
   },
   "devDependencies": {
-    "typescript":  "^5.4.0",
-    "tsx":         "^4.7.0",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
     "@types/node": "^20.0.0"
   }
 }

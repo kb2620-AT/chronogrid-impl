@@ -1,351 +1,144 @@
 /**
  * cg-api/src/openapi.ts
- * OpenAPI 3.1 Spezifikation — CG-STD-4100 v0.5 (normativ)
- * GET /v1/openapi.json liefert dieses Dokument.
+ * OpenAPI 3.1 Spezifikation — CG-STD-4100 v0.7 Kap. 8 (Anlage A)
  */
 
-export const OPENAPI_SPEC = {
+export const openApiSpec = {
   openapi: '3.1.0',
   info: {
-    title:       'ChronoGrid API',
-    version:     '0.5.0',
-    description: 'Normative REST API — CG-STD-4100-2026 v0.5. Base URL: https://api.chronogrid.org/v1',
-    contact: {
-      name:  'ChronoGrid Systems',
-      url:   'https://chronogrid.org',
-      email: 'spec@chronogrid.org',
-    },
-    license: { name: 'ChronoGrid Standards License', url: 'https://chronogrid.org/license' },
+    title: 'ChronoGrid API',
+    version: '0.7.0',
+    description: 'ChronoGrid Reference Implementation REST API — CG-STD-4100 v0.7',
+    contact: { name: 'ChronoGrid Systems', url: 'https://chronogrid.systems' },
   },
-  servers: [
-    { url: 'https://api.chronogrid.org/v1', description: 'Produktion (normativ)' },
-    { url: 'http://localhost:3000/v1',      description: 'Entwicklung' },
-  ],
-  security: [{ BearerAuth: [] }],
-
-  components: {
-    securitySchemes: {
-      BearerAuth: {
-        type: 'http', scheme: 'bearer', bearerFormat: 'JWT',
-        description: 'JWT RS256/ES256, Issuer: https://auth.chronogrid.org, Audience: chronogrid-api',
-      },
-    },
-    schemas: {
-      CGError: {
-        type: 'object', required: ['error'],
-        properties: {
-          error: {
-            type: 'object', required: ['cg_code', 'message'],
-            properties: {
-              cg_code:  { type: 'string', example: 'CG-E-001.002', description: 'Normatives Fehlercode-Format' },
-              class:    { type: 'string', example: 'SyntaxError' },
-              severity: { type: 'string', enum: ['FATAL', 'ERROR', 'WARNING'] },
-              message:  { type: 'string' },
-              context:  { type: 'object' },
-              cgStd:    { type: 'string', example: 'CG-STD-2100-2026 v1.4' },
-            },
-          },
-        },
-      },
-      CGTA: {
-        type: 'string',
-        pattern: '^CG:[^:]+:-?\\d+(/:\\sigma\\d+)?/v\\d+$',
-        example: 'CG:TAI:1743585310000000000/v1',
-        description: 'ChronoGrid Time Address — normatives Format (CG-STD-2100 Kap. 4.1)',
-      },
-      Timepoint: {
-        type: 'object', required: ['machine_id', 'cgta', 'absolute_value', 'domain', 'granularity'],
-        properties: {
-          machine_id:     { type: 'string', minLength: 64, maxLength: 64, description: 'SHA-256 hex' },
-          cgta:           { $ref: '#/components/schemas/CGTA' },
-          absolute_value: { type: 'string', description: 'BigInt als String (JSON-sicher, kein Float)' },
-          domain:         { type: 'string', example: 'TAI/v1' },
-          granularity:    { type: 'string', example: 'nanosecond' },
-          created_at:     { $ref: '#/components/schemas/CGTA' },
-          created_by:     { type: 'string' },
-        },
-      },
-      Segment: {
-        type: 'object', required: ['segment_id', 'owner_id', 'start_address', 'end_address', 'size_ns'],
-        properties: {
-          segment_id:     { type: 'string', example: 'at.gv.staatsarchiv' },
-          owner_id:       { type: 'string' },
-          parent_id:      { type: 'string', nullable: true },
-          start_address:  { type: 'string', description: '79-Bit CGUA-Adresse als String' },
-          end_address:    { type: 'string' },
-          size_ns:        { type: 'string', description: 'Nanosekunden als String' },
-          level:          { type: 'integer', minimum: 0, maximum: 6 },
-          status:         { type: 'string', enum: ['active', 'inactive'] },
-          granted_at:     { $ref: '#/components/schemas/CGTA' },
-          integrity_hash: { type: 'string', minLength: 64, maxLength: 64 },
-        },
-      },
-      Manifest: {
-        type: 'object', required: ['cgfi', 'type_id', 'created_at', 'content_hash'],
-        properties: {
-          cgfi:           { type: 'string', minLength: 64, maxLength: 64, description: 'SHA-256 hex (CG-STD-3100 Kap. 5.4)' },
-          cgfs_version:   { type: 'string', example: '1.0' },
-          type_id:        { type: 'string', example: 'legal/contract/v1' },
-          type_schema:    { type: 'string', format: 'uri' },
-          created_at:     { $ref: '#/components/schemas/CGTA' },
-          content_hash:   { type: 'string', minLength: 64, maxLength: 64 },
-          prev_version:   { type: 'string', nullable: true },
-          cgua:           { $ref: '#/components/schemas/CGTA', nullable: true },
-          retention:      { type: 'string', example: 'P30Y', description: 'ISO-8601-Dauer' },
-          access_level:   { type: 'string', enum: ['public', 'restricted', 'confidential', 'secret'] },
-          deleted_at:     { $ref: '#/components/schemas/CGTA', nullable: true },
-          deleted_reason: { type: 'string', nullable: true },
-        },
-      },
-      Pagination: {
-        type: 'object',
-        properties: {
-          next_cursor: { type: 'string', nullable: true },
-          has_more:    { type: 'boolean' },
-          total_hint:  { type: 'integer', description: 'Approximativ, nicht normativ' },
-        },
-      },
-    },
-    responses: {
-      Unauthorized: {
-        description: '401 Unauthorized — JWT fehlt oder ungültig',
-        content: { 'application/json': { schema: { $ref: '#/components/schemas/CGError' } } },
-      },
-      Forbidden: {
-        description: '403 Forbidden — Unzureichende Rolle (RBAC)',
-        content: { 'application/json': { schema: { $ref: '#/components/schemas/CGError' } } },
-      },
-      NotFound: {
-        description: '404 Not Found',
-        content: { 'application/json': { schema: { $ref: '#/components/schemas/CGError' } } },
-      },
-      UnprocessableEntity: {
-        description: '422 Unprocessable Entity — Normative Validierungsfehler (CG-E-001.*)',
-        content: { 'application/json': { schema: { $ref: '#/components/schemas/CGError' } } },
-      },
-    },
-  },
-
+  servers: [{ url: 'http://localhost:3000', description: 'Lokale Entwicklung' }],
   paths: {
-    '/timepoints': {
-      post: {
-        summary:     'Zeitpunkt speichern (idempotent)',
-        operationId: 'postTimepoints',
-        description: 'Speichert einen CGTA-Zeitpunkt. Idempotent: gleiche MachineID → 200 (nicht 201).',
-        tags: ['Zeitpunkte'],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object', required: ['cgta'],
-                properties: {
-                  cgta:  { $ref: '#/components/schemas/CGTA' },
-                  label: { type: 'string' },
-                  tags:  { type: 'array', items: { type: 'string' } },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '201': { description: 'Erstellt', content: { 'application/json': { schema: { $ref: '#/components/schemas/Timepoint' } } } },
-          '200': { description: 'Bereits vorhanden (idempotent)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Timepoint' } } } },
-          '401': { $ref: '#/components/responses/Unauthorized' },
-          '403': { $ref: '#/components/responses/Forbidden' },
-          '422': { $ref: '#/components/responses/UnprocessableEntity' },
-        },
+    '/v1/health': {
+      get: { summary: 'Health Check', operationId: 'getHealth', tags: ['System'],
+        responses: { '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object' } } } } } },
+    },
+    '/v1/timepoints': {
+      post: { summary: 'Zeitpunkt erstellen', operationId: 'postTimepoints', tags: ['Timepoints'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['domain', 'value'],
+          properties: { domain: { type: 'string' }, value: { type: 'string' },
+            version: { type: 'string', default: '1.0' }, labels: { type: 'object' } },
+        } } } },
+        responses: { '201': { description: 'Erstellt' }, '422': { description: 'Validierungsfehler' } },
       },
-      get: {
-        summary:     'Zeitpunkte auflisten (cursor-basiert)',
-        operationId: 'listTimepoints',
-        tags: ['Zeitpunkte'],
+      get: { summary: 'Zeitpunkte auflisten', operationId: 'listTimepoints', tags: ['Timepoints'],
         parameters: [
-          { name: 'domain',   in: 'query', schema: { type: 'string' } },
-          { name: 'after',    in: 'query', schema: { type: 'string' }, description: 'Cursor (machine_id)' },
-          { name: 'limit',    in: 'query', schema: { type: 'integer', minimum: 1, maximum: 1000, default: 100 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 100 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
         ],
-        responses: {
-          '200': {
-            description: 'OK',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    data:       { type: 'array', items: { $ref: '#/components/schemas/Timepoint' } },
-                    pagination: { $ref: '#/components/schemas/Pagination' },
-                  },
-                },
-              },
-            },
-          },
-        },
+        responses: { '200': { description: 'Liste' } },
       },
     },
-    '/timepoints/convert': {
-      post: {
-        summary:     'Zeitpunkt konvertieren (zustandslos)',
-        operationId: 'convertTimepoint',
-        tags: ['Zeitpunkte'],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object', required: ['cgta', 'target_domain'],
-                properties: {
-                  cgta:          { $ref: '#/components/schemas/CGTA' },
-                  target_domain: { type: 'string', example: 'TAI/v1' },
-                  worldline_ref: { type: 'string', nullable: true, description: 'Pflicht für Klasse-B-Mappings' },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'OK — Konvertierungsergebnis' },
-          '422': { $ref: '#/components/responses/UnprocessableEntity' },
-        },
+    '/v1/timepoints/{machine_id}': {
+      get: { summary: 'Zeitpunkt abrufen', operationId: 'getTimepoint', tags: ['Timepoints'],
+        parameters: [{ name: 'machine_id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' }, '404': { description: 'Nicht gefunden' } },
       },
     },
-    '/timepoints/validate': {
-      post: {
-        summary:     'CGTA validieren (zustandslos)',
-        operationId: 'validateTimepoint',
-        tags: ['Zeitpunkte'],
-        requestBody: {
-          required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['cgta'], properties: { cgta: { type: 'string' } } } } },
-        },
-        responses: {
-          '200': { description: 'Validierungsergebnis (valid: true|false)' },
-        },
+    '/v1/timepoints/convert': {
+      post: { summary: 'Domain-Konversion', operationId: 'convertTimepoint', tags: ['Timepoints'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['from_domain', 'to_domain', 'value'],
+          properties: { from_domain: { type: 'string' }, to_domain: { type: 'string' }, value: { type: 'string' } },
+        } } } },
+        responses: { '200': { description: 'OK' }, '422': { description: 'Mapping-Fehler' } },
       },
     },
-    '/segments': {
-      post: {
-        summary:     'Segment registrieren (CGUAS)',
-        operationId: 'postSegment',
-        tags: ['CGUAS'],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object', required: ['segment_id', 'owner_id', 'parent_id', 'size_ns'],
-                properties: {
-                  segment_id: { type: 'string', example: 'at.gv.staatsarchiv' },
-                  owner_id:   { type: 'string' },
-                  parent_id:  { type: 'string', example: 'CG.CGUAS.ROOT' },
-                  size_ns:    { type: 'string', description: 'Nanosekunden als String (BigInt)' },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '201': { description: 'Segment zugeteilt', content: { 'application/json': { schema: { $ref: '#/components/schemas/Segment' } } } },
-          '409': { description: 'Kollision (CG-E-010.003)' },
-          '507': { description: 'Kein Platz (CG-E-010.001)' },
-        },
+    '/v1/timepoints/validate': {
+      post: { summary: 'CGTA validieren', operationId: 'validateTimepoint', tags: ['Timepoints'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['cgta'], properties: { cgta: { type: 'string' } },
+        } } } },
+        responses: { '200': { description: 'Gültig' }, '422': { description: 'Ungültig' } },
       },
     },
-    '/segments/resolve/{cgua}': {
-      get: {
-        summary:     'CGUA-Adresse auflösen',
-        operationId: 'resolveCGUA',
-        tags: ['CGUAS'],
-        parameters: [{ name: 'cgua', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: {
-          '200': { description: 'Segment gefunden' },
-          '404': { description: 'Adresse liegt in keinem Segment (CG-E-010.002)' },
-        },
+    '/v1/domains': {
+      get: { summary: 'Domains auflisten', operationId: 'listDomains', tags: ['Domains'],
+        responses: { '200': { description: 'OK' } } },
+      post: { summary: 'Domain registrieren', operationId: 'postDomain', tags: ['Domains'],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { '201': { description: 'Erstellt' }, '409': { description: 'Duplikat' } },
       },
     },
-    '/files': {
-      post: {
-        summary:     'Manifest speichern (CGFS)',
-        operationId: 'postFile',
-        tags: ['CGFS'],
-        requestBody: {
-          required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/Manifest' } } },
-        },
-        responses: {
-          '201': { description: 'Manifest gespeichert, CGFI berechnet' },
-          '422': { description: 'Integritätsfehler (CG-E-011.004)' },
-        },
+    '/v1/domains/validate': {
+      post: { summary: 'CTDDL validieren', operationId: 'validateDomain', tags: ['Domains'],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { '200': { description: 'Gültig' }, '422': { description: 'Ungültig' } },
       },
     },
-    '/files/{cgfi}': {
-      get: {
-        summary:     'Manifest abrufen',
-        operationId: 'getFile',
-        tags: ['CGFS'],
-        parameters: [{ name: 'cgfi', in: 'path', required: true, schema: { type: 'string', minLength: 64, maxLength: 64 } }],
-        responses: {
-          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/Manifest' } } } },
-          '404': { $ref: '#/components/responses/NotFound' },
-        },
-      },
-      delete: {
-        summary:     'Logisch löschen (DSGVO Art. 17)',
-        operationId: 'deleteFile',
-        tags: ['CGFS'],
-        description: 'Logisches Löschen: deleted_at wird gesetzt. CGFI und Metadaten bleiben erhalten (I-D1).',
-        parameters: [{ name: 'cgfi', in: 'path', required: true, schema: { type: 'string' } }],
-        requestBody: {
-          content: { 'application/json': { schema: { type: 'object', properties: { reason: { type: 'string', example: 'dsgvo_art17' } } } } },
-        },
-        responses: {
-          '200': { description: 'Logisch gelöscht' },
-          '410': { description: 'Bereits gelöscht (CG-E-011.009)' },
-        },
-      },
-    },
-    '/health': {
-      get: {
-        summary:     'System-Status',
-        operationId: 'getHealth',
-        tags: ['System'],
-        security:    [],  // kein Auth erforderlich
+    '/v1/relations/compute': {
+      post: { summary: 'Allen-Relation berechnen', operationId: 'computeRelation', tags: ['Relations'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['a_start', 'a_end', 'b_start', 'b_end'],
+          properties: { a_start: { type: 'string' }, a_end: { type: 'string' },
+            b_start: { type: 'string' }, b_end: { type: 'string' },
+            a_id: { type: 'string' }, b_id: { type: 'string' } },
+        } } } },
         responses: { '200': { description: 'OK' } },
       },
     },
-    '/relations/compute': {
-      post: {
-        summary:     'Allen-Relation berechnen (zustandslos)',
-        operationId: 'computeRelation',
-        tags: ['Relationen'],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object', required: ['interval_a', 'interval_b'],
-                properties: {
-                  interval_a: { type: 'object', required: ['start', 'end'], properties: { start: { $ref: '#/components/schemas/CGTA' }, end: { $ref: '#/components/schemas/CGTA' } } },
-                  interval_b: { type: 'object', required: ['start', 'end'], properties: { start: { $ref: '#/components/schemas/CGTA' }, end: { $ref: '#/components/schemas/CGTA' } } },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Allen-Relation' },
-          '422': { $ref: '#/components/responses/UnprocessableEntity' },
-        },
+    '/v1/segments': {
+      post: { summary: 'Segment allokieren', operationId: 'postSegment', tags: ['CGUAS'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object',
+          properties: { granted_by: { type: 'string' }, size_ns: { type: 'string' }, parent_id: { type: 'string' } },
+        } } } },
+        responses: { '201': { description: 'Erstellt' } },
       },
     },
+    '/v1/segments/resolve/{cgua}': {
+      get: { summary: 'CGUA auflösen', operationId: 'resolveCGUA', tags: ['CGUAS'],
+        parameters: [{ name: 'cgua', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' }, '404': { description: 'Nicht gefunden' } },
+      },
+    },
+    '/v1/files': {
+      post: { summary: 'Datei-Manifest erstellen', operationId: 'postFile', tags: ['CGFS'],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { '201': { description: 'Erstellt' } },
+      },
+    },
+    '/v1/files/{cgfi}': {
+      get: { summary: 'Manifest abrufen', operationId: 'getFile', tags: ['CGFS'],
+        parameters: [{ name: 'cgfi', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' }, '404': { description: 'Nicht gefunden' }, '410': { description: 'Tombstone' } },
+      },
+      delete: { summary: 'Tombstone setzen', operationId: 'deleteFile', tags: ['CGFS'],
+        parameters: [{ name: 'cgfi', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/v1/graphql': {
+      post: { summary: 'GraphQL Endpunkt (Sprint 7)', operationId: 'graphql', tags: ['GraphQL'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['query'],
+          properties: { query: { type: 'string' }, variables: { type: 'object' } },
+        } } } },
+        responses: { '200': { description: 'GraphQL-Antwort' } },
+      },
+    },
+    '/v1/webhooks': {
+      post: { summary: 'Webhook registrieren (Sprint 7)', operationId: 'postWebhook', tags: ['Webhooks'],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['url', 'events'],
+          properties: { url: { type: 'string', format: 'uri' }, events: { type: 'array', items: { type: 'string' } },
+            secret: { type: 'string' } },
+        } } } },
+        responses: { '201': { description: 'Erstellt' } },
+      },
+      get: { summary: 'Webhooks auflisten', operationId: 'listWebhooks', tags: ['Webhooks'],
+        responses: { '200': { description: 'OK' } } },
+    },
   },
-
   tags: [
-    { name: 'Zeitpunkte', description: 'CGTA-Zeitpunkt Verwaltung (CG-STD-4100 Kap. 4.2)' },
-    { name: 'Relationen', description: 'Allen Interval Algebra (CG-STD-4100 Kap. 4.4)' },
-    { name: 'Domains',    description: 'CTDDL-Domain-Registry (CG-STD-4100 Kap. 4.3)' },
-    { name: 'CGUAS',      description: 'Universal Address Space Segments (CG-STD-6100 Teil A)' },
-    { name: 'CGFS',       description: 'ChronoGrid File System Manifeste (CG-STD-6100 Teil B)' },
-    { name: 'System',     description: 'Health + OpenAPI' },
+    { name: 'System' }, { name: 'Timepoints' }, { name: 'Domains' },
+    { name: 'Relations' }, { name: 'CGUAS' }, { name: 'CGFS' },
+    { name: 'GraphQL', description: 'Sprint 7 — CG-STD-4100 Kap. 5' },
+    { name: 'Webhooks', description: 'Sprint 7 — CG-STD-4100 Kap. 6' },
   ],
-} as const;
+};

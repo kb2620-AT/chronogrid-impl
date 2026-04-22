@@ -1,249 +1,138 @@
 /**
  * cg-types/src/errors.ts
- * Normative error code catalog — CG-STD-2100 v1.4, Kap. 9
- * 11 Klassen, 64 normative Sub-Codes
+ * Normative Fehlerklassen — CG-STD-2100 v1.4 Kap. 9
+ * Klassen: CG-E-001 (SyntaxError) bis CG-E-011 (CGFSError)
  */
 
-export type CGSeverity = 'FATAL' | 'ERROR' | 'WARNING';
-export type CGThrownBy = 'Parser' | 'Engine' | 'Registry' | 'Validator';
-
-export interface CGErrorStructure {
-  code: string;          // "CG-E-00X.YYY" — normativ
-  class: string;         // Klassenname — normativ
-  severity: CGSeverity;  // normativ
-  thrownBy: CGThrownBy;  // normativ
-  message: string;       // human-readable — normativ
-  context?: Record<string, unknown>; // optional, maschinenlesbar
-  cgStd: string;         // normativ, z.B. "CG-STD-2100-2026 v1.4"
-}
+export interface CGErrorContext { [key: string]: unknown }
 
 export class CGError extends Error {
-  readonly code: string;
-  readonly class: string;
-  readonly severity: CGSeverity;
-  readonly thrownBy: CGThrownBy;
-  readonly context?: Record<string, unknown>;
-  readonly cgStd: string;
-
-  constructor(fields: CGErrorStructure) {
-    super(fields.message);
-    this.name = fields.class;
-    this.code = fields.code;
-    this.class = fields.class;
-    this.severity = fields.severity;
-    this.thrownBy = fields.thrownBy;
-    this.context = fields.context;
-    this.cgStd = fields.cgStd;
+  constructor(
+    public readonly code: string,
+    public readonly cgClass: string,
+    public readonly severity: 'FATAL' | 'WARNING',
+    public readonly thrownBy: string,
+    message: string,
+    public readonly context?: CGErrorContext,
+    public readonly httpStatus: number = 422,
+  ) {
+    super(message);
+    this.name = cgClass;
   }
-
-  toJSON(): CGErrorStructure {
+  toJSON() {
     return {
-      code: this.code,
-      class: this.class,
-      severity: this.severity,
-      thrownBy: this.thrownBy,
-      message: this.message,
-      context: this.context,
-      cgStd: this.cgStd,
+      code: this.code, class: this.cgClass, severity: this.severity,
+      thrownBy: this.thrownBy, message: this.message,
+      context: this.context, cgStd: 'CG-STD-2100-2026 v1.4',
     };
   }
 }
 
-// ── Hilfsfunktion ────────────────────────────────────────────────────────────
-function cge(
-  code: string,
-  cls: string,
-  severity: CGSeverity,
-  thrownBy: CGThrownBy,
-  message: string,
-  context?: Record<string, unknown>,
-): CGError {
-  return new CGError({ code, class: cls, severity, thrownBy, message, context,
-    cgStd: 'CG-STD-2100-2026 v1.4' });
+function mk(code: string, cls: string, severity: 'FATAL'|'WARNING', by: string, http: number) {
+  return (msg: string, ctx?: CGErrorContext) => new CGError(code, cls, severity, by, msg, ctx, http);
 }
 
-// ── CG-E-001 SyntaxError (7 Sub-Codes) ──────────────────────────────────────
 export const Errors = {
-
+  // CG-E-001 SyntaxError
   SyntaxError: {
-    InvalidJSON:       (ctx?: Record<string, unknown>) =>
-      cge('CG-E-001.001', 'SyntaxError', 'FATAL', 'Parser', 'Ungültiges JSON-Format', ctx),
-    MissingField:      (field: string) =>
-      cge('CG-E-001.002', 'SyntaxError', 'FATAL', 'Parser', `Pflichtfeld fehlt: ${field}`, { field }),
-    InvalidFieldType:  (field: string, expected: string, got: string) =>
-      cge('CG-E-001.003', 'SyntaxError', 'FATAL', 'Parser', `Ungültiger Feldtyp: ${field}`, { field, expected, got }),
-    InvalidDomainType: (value: string) =>
-      cge('CG-E-001.004', 'SyntaxError', 'FATAL', 'Parser', `Ungültiger Domain-Typ: ${value}`, { value }),
-    InvalidGranularity:(value: unknown) =>
-      cge('CG-E-001.005', 'SyntaxError', 'FATAL', 'Parser', `Ungültige Granularität: ${value}`, { value }),
-    InvalidVersion:    (value: string) =>
-      cge('CG-E-001.006', 'SyntaxError', 'FATAL', 'Parser', `Ungültiges Versionsformat: ${value}`, { value }),
-    ABNFViolation:     (ctx?: Record<string, unknown>) =>
-      cge('CG-E-001.007', 'SyntaxError', 'FATAL', 'Parser', 'ABNF-Grammatik verletzt', ctx),
+    invalidJson:    mk('CG-E-001.001','SyntaxError','FATAL','Parser',422),
+    missingField:   mk('CG-E-001.002','SyntaxError','FATAL','Parser',422),
+    invalidType:    mk('CG-E-001.003','SyntaxError','FATAL','Parser',422),
+    invalidDomainType: mk('CG-E-001.004','SyntaxError','FATAL','Parser',422),
+    invalidGranularity: mk('CG-E-001.005','SyntaxError','FATAL','Parser',422),
+    invalidVersion: mk('CG-E-001.006','SyntaxError','FATAL','Parser',422),
+    abnfViolation:  mk('CG-E-001.007','SyntaxError','FATAL','Parser',422),
   },
-
-  // ── CG-E-002 SemanticError (5 Sub-Codes) ──────────────────────────────────
+  // CG-E-002 SemanticError
   SemanticError: {
-    DomainNameNotUnique: (name: string) =>
-      cge('CG-E-002.001', 'SemanticError', 'FATAL', 'Parser', `Domain-Name nicht eindeutig: ${name}`, { name }),
-    CircularHierarchy:   (ctx?: Record<string, unknown>) =>
-      cge('CG-E-002.002', 'SemanticError', 'FATAL', 'Parser', 'Zirkuläre Hierarchie', ctx),
-    InvalidGranularityCascade: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-002.003', 'SemanticError', 'FATAL', 'Parser', 'Ungültige Granularitäts-Kaskade', ctx),
-    ConflictingInvariants: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-002.004', 'SemanticError', 'FATAL', 'Parser', 'Widersprüchliche Invarianten', ctx),
-    InvalidRegex:          (pattern: string) =>
-      cge('CG-E-002.005', 'SemanticError', 'FATAL', 'Parser', `Ungültige Regex: ${pattern}`, { pattern }),
+    duplicateName:      mk('CG-E-002.001','SemanticError','FATAL','Parser',409),
+    circularHierarchy:  mk('CG-E-002.002','SemanticError','FATAL','Parser',422),
+    invalidGranularityCascade: mk('CG-E-002.003','SemanticError','FATAL','Parser',422),
+    contradictoryInvariants:   mk('CG-E-002.004','SemanticError','FATAL','Parser',422),
+    invalidRegex:       mk('CG-E-002.005','SemanticError','FATAL','Parser',422),
   },
-
-  // ── CG-E-003 ExtentError (5 Sub-Codes) ────────────────────────────────────
+  // CG-E-003 ExtentError
   ExtentError: {
-    UnderLowerBound:     (t: bigint, min: bigint) =>
-      cge('CG-E-003.001', 'ExtentError', 'FATAL', 'Engine', 'Zeitwert unter Untergrenze', { t: t.toString(), min: min.toString() }),
-    OverUpperBound:      (t: bigint, max: bigint) =>
-      cge('CG-E-003.002', 'ExtentError', 'FATAL', 'Engine', 'Zeitwert über Obergrenze', { t: t.toString(), max: max.toString() }),
-    MinGreaterThanMax:   (min: bigint, max: bigint) =>
-      cge('CG-E-003.003', 'ExtentError', 'FATAL', 'Engine', 'Extent min > max', { min: min.toString(), max: max.toString() }),
-    Int64Overflow:       (value: bigint) =>
-      cge('CG-E-003.004', 'ExtentError', 'FATAL', 'Engine', 'int64-Overflow (Level 1/2)', { value: value.toString() }),
-    InvalidExtentUnit:   (ctx?: Record<string, unknown>) =>
-      cge('CG-E-003.005', 'ExtentError', 'FATAL', 'Engine', 'Ungültige Extent-Einheit', ctx),
+    belowMin:     mk('CG-E-003.001','ExtentError','FATAL','Engine',422),
+    aboveMax:     mk('CG-E-003.002','ExtentError','FATAL','Engine',422),
+    minGtMax:     mk('CG-E-003.003','ExtentError','FATAL','Engine',422),
+    int64Overflow:mk('CG-E-003.004','ExtentError','FATAL','Engine',422),
+    invalidUnit:  mk('CG-E-003.005','ExtentError','FATAL','Engine',422),
   },
-
-  // ── CG-E-004 HierarchyError (5 Sub-Codes) ─────────────────────────────────
+  // CG-E-004 HierarchyError
   HierarchyError: {
-    UnknownUnit:         (unit: string) =>
-      cge('CG-E-004.001', 'HierarchyError', 'FATAL', 'Engine', `Unbekannte Zeiteinheit: ${unit}`, { unit }),
-    MissingConversionFactor: (from: string, to: string) =>
-      cge('CG-E-004.002', 'HierarchyError', 'FATAL', 'Engine', 'Fehlender Konversionsfaktor', { from, to }),
-    VariableFactorWithoutRule: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-004.003', 'HierarchyError', 'FATAL', 'Engine', 'Variabler Faktor ohne Regel', ctx),
-    HierarchyIncomplete: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-004.004', 'HierarchyError', 'FATAL', 'Engine', 'Hierarchie nicht vollständig', ctx),
-    InconsistentBaseSeconds: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-004.005', 'HierarchyError', 'FATAL', 'Engine', 'Inkonsistente baseSeconds', ctx),
+    unknownUnit:         mk('CG-E-004.001','HierarchyError','FATAL','Engine',422),
+    missingFactor:       mk('CG-E-004.002','HierarchyError','FATAL','Engine',422),
+    variableWithoutRule: mk('CG-E-004.003','HierarchyError','FATAL','Engine',422),
+    incompleteHierarchy: mk('CG-E-004.004','HierarchyError','FATAL','Engine',422),
+    inconsistentBase:    mk('CG-E-004.005','HierarchyError','FATAL','Engine',422),
   },
-
-  // ── CG-E-005 MappingError (10 Sub-Codes) ──────────────────────────────────
+  // CG-E-005 MappingError
   MappingError: {
-    TargetDomainNotFound:(domain: string) =>
-      cge('CG-E-005.001', 'MappingError', 'FATAL', 'Engine', `Ziel-Domain nicht gefunden: ${domain}`, { domain }),
-    MissingRefPoint:     (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.002', 'MappingError', 'FATAL', 'Engine', 'Fehlender Referenzpunkt', ctx),
-    RefPointOutOfExtent: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.003', 'MappingError', 'FATAL', 'Engine', 'Referenzpunkt außerhalb Extent', ctx),
-    OverlappingIntervals:(ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.004', 'MappingError', 'FATAL', 'Engine', 'Überlappende piecewise-Intervalle', ctx),
-    PartitionGap:        (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.005', 'MappingError', 'FATAL', 'Engine', 'Lücke in piecewise-Partition', ctx),
-    InvalidMathExpr:     (expr: string) =>
-      cge('CG-E-005.006', 'MappingError', 'FATAL', 'Engine', `Ungültige math-expr Syntax: ${expr}`, { expr }),
-    DivisionByZero:      (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.007', 'MappingError', 'FATAL', 'Engine', 'Division durch Null', ctx),
-    ExternalReferenceInExpr: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.008', 'MappingError', 'FATAL', 'Engine', 'Externe Referenz in math-expr', ctx),
-    RefPointConsistency: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-005.009', 'MappingError', 'FATAL', 'Engine', 'Referenzpunkt-Konsistenz verletzt (I-M3)', ctx),
-    ChainTooLong:        (length: number) =>
-      cge('CG-E-005.010', 'MappingError', 'FATAL', 'Engine', `Mapping-Kette zu lang: ${length} > 8`, { length }),
+    targetNotFound:       mk('CG-E-005.001','MappingError','FATAL','Engine',404),
+    missingRefPoint:      mk('CG-E-005.002','MappingError','FATAL','Engine',422),
+    refPointOutOfExtent:  mk('CG-E-005.003','MappingError','FATAL','Engine',422),
+    overlappingSegments:  mk('CG-E-005.004','MappingError','FATAL','Engine',422),
+    gapInPartition:       mk('CG-E-005.005','MappingError','FATAL','Engine',422),
+    invalidMathExpr:      mk('CG-E-005.006','MappingError','FATAL','Engine',422),
+    divisionByZero:       mk('CG-E-005.007','MappingError','FATAL','Engine',422),
+    externalReference:    mk('CG-E-005.008','MappingError','FATAL','Engine',422),
+    refPointConsistency:  mk('CG-E-005.009','MappingError','FATAL','Engine',422),
+    chainTooLong:         mk('CG-E-005.010','MappingError','FATAL','Engine',422),
   },
-
-  // ── CG-E-006 InvariantError (6 Sub-Codes) ─────────────────────────────────
+  // CG-E-006 InvariantError
   InvariantError: {
-    I_R1:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.001', 'InvariantError', 'FATAL', 'Engine', 'I-R1 verletzt: kein eindeutiger Zeitwert', ctx),
-    I_R2:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.002', 'InvariantError', 'FATAL', 'Engine', 'I-R2 verletzt: Totale Ordnung nicht gewährleistet', ctx),
-    I_R3:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.003', 'InvariantError', 'FATAL', 'Engine', 'I-R3 verletzt: Deterministisches Ergebnis nicht reproduzierbar', ctx),
-    I_D1:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.004', 'InvariantError', 'FATAL', 'Engine', 'I-D1 verletzt: Veröffentlichte Domain-Version modifiziert', ctx),
-    I_M1:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.005', 'InvariantError', 'FATAL', 'Engine', 'I-M1 verletzt: Mapping nicht eindeutig', ctx),
-    I_E1:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-006.006', 'InvariantError', 'FATAL', 'Engine', 'I-E1 verletzt: Universeller Zeitursprung deklariert (verboten)', ctx),
+    I_R1: mk('CG-E-006.001','InvariantError','FATAL','Engine',500),
+    I_R2: mk('CG-E-006.002','InvariantError','FATAL','Engine',500),
+    I_R3: mk('CG-E-006.003','InvariantError','FATAL','Engine',500),
+    I_D1: mk('CG-E-006.004','InvariantError','FATAL','Engine',500),
+    I_M1: mk('CG-E-006.005','InvariantError','FATAL','Engine',500),
+    I_E1: mk('CG-E-006.006','InvariantError','FATAL','Engine',422),
   },
-
-  // ── CG-E-007 VersionError (4 Sub-Codes) ───────────────────────────────────
+  // CG-E-007 VersionError
   VersionError: {
-    NotFound:     (domain: string, version: number) =>
-      cge('CG-E-007.001', 'VersionError', 'FATAL', 'Registry', `Version nicht gefunden: ${domain} v${version}`, { domain, version }),
-    Incompatible: (a: string, b: string) =>
-      cge('CG-E-007.002', 'VersionError', 'FATAL', 'Engine', 'Inkompatible Versionen kombiniert', { a, b }),
-    Outdated:     (domain: string, current: number, latest: number) =>
-      cge('CG-E-007.003', 'VersionError', 'WARNING', 'Registry', `Veraltete Version: ${domain} v${current}, neu: v${latest}`, { domain, current, latest }),
-    RollbackAttempt: (domain: string) =>
-      cge('CG-E-007.004', 'VersionError', 'FATAL', 'Registry', `Version-Rollback versucht: ${domain}`, { domain }),
+    notFound:       mk('CG-E-007.001','VersionError','FATAL','Registry',404),
+    incompatible:   mk('CG-E-007.002','VersionError','FATAL','Registry',422),
+    deprecated:     mk('CG-E-007.003','VersionError','WARNING','Registry',200),
+    rollbackAttempt:mk('CG-E-007.004','VersionError','FATAL','Registry',409),
   },
-
-  // ── CG-E-008 ConstraintError (3 Sub-Codes, NEU v1.1) ──────────────────────
+  // CG-E-008 ConstraintError
   ConstraintError: {
-    MissingScientificDependency: (stability: string) =>
-      cge('CG-E-008.001', 'ConstraintError', 'FATAL', 'Validator', `scientific_dependency fehlt (stability=${stability})`, { stability }),
-    UncertaintyExceeded: (actual: number, limit: number) =>
-      cge('CG-E-008.002', 'ConstraintError', 'WARNING', 'Engine', 'Unsicherheit überschritten', { actual, limit }),
-    MappingConstraintViolated: (ctx?: Record<string, unknown>) =>
-      cge('CG-E-008.003', 'ConstraintError', 'FATAL', 'Engine', 'Mapping-Constraint verletzt', ctx),
+    missingScientificDependency: mk('CG-E-008.001','ConstraintError','FATAL','Validator',422),
+    uncertaintyExceeded:         mk('CG-E-008.002','ConstraintError','WARNING','Engine',200),
+    mappingConstraintViolated:   mk('CG-E-008.003','ConstraintError','FATAL','Engine',422),
   },
-
-  // ── CG-E-009 RegistryError (4 Sub-Codes, NEU v1.3) ────────────────────────
+  // CG-E-009 RegistryError
   RegistryError: {
-    Conflict:              (id: string) =>
-      cge('CG-E-009.001', 'RegistryError', 'ERROR', 'Registry', `Domain-ID oder FileType-ID bereits registriert: ${id}`, { id }),
-    InvalidNamespace:      (id: string) =>
-      cge('CG-E-009.002', 'RegistryError', 'ERROR', 'Registry', `filetype-id verletzt ABNF: ${id}`, { id }),
-    FederationSyncFailed:  (ctx?: Record<string, unknown>) =>
-      cge('CG-E-009.003', 'RegistryError', 'WARNING', 'Registry', 'Registry-Föderation konnte nicht synchronisiert werden', ctx),
-    UnauthorizedCategory:  (category: string) =>
-      cge('CG-E-009.004', 'RegistryError', 'FATAL', 'Registry', `Neue Kategorie ohne CIP-D-Genehmigung: ${category}`, { category }),
+    conflict:       mk('CG-E-009.001','RegistryError','FATAL','Registry',409),
+    invalidNS:      mk('CG-E-009.002','RegistryError','FATAL','Registry',422),
+    cipRejected:    mk('CG-E-009.003','RegistryError','FATAL','Registry',422),
+    notFound:       mk('CG-E-009.004','RegistryError','FATAL','Registry',404),
   },
-
-  // ── CG-E-010 CGUASError (8 Sub-Codes, NEU v1.2) ───────────────────────────
+  // CG-E-010 CGUASError
   CGUASError: {
-    SegmentSpaceExhausted: (segment: string) =>
-      cge('CG-E-010.001', 'CGUASError', 'FATAL', 'Registry', 'Segment hat keinen Platz mehr', { segment }),
-    SegmentNotFound:       (address: bigint) =>
-      cge('CG-E-010.002', 'CGUASError', 'FATAL', 'Registry', 'CGUA-Adresse liegt in keinem registrierten Segment', { address: address.toString() }),
-    SegmentOverlap:        (ctx?: Record<string, unknown>) =>
-      cge('CG-E-010.003', 'CGUASError', 'FATAL', 'Registry', 'Zwei Segmente überlappen (darf nie auftreten)', ctx),
-    SegmentTooSmall:       (requested: bigint, minimum: bigint) =>
-      cge('CG-E-010.004', 'CGUASError', 'FATAL', 'Registry', 'Angefordertes Segment kleiner als Mindestgröße', { requested: requested.toString(), minimum: minimum.toString() }),
-    SegmentTooLarge:       (requested: bigint, maximum: bigint) =>
-      cge('CG-E-010.005', 'CGUASError', 'FATAL', 'Registry', 'Angefordertes Segment größer als Maximalgrenze', { requested: requested.toString(), maximum: maximum.toString() }),
-    SegmentOwnerMismatch:  (address: bigint, owner: string) =>
-      cge('CG-E-010.006', 'CGUASError', 'FATAL', 'Registry', 'CGUA-Adresse liegt im Segment einer anderen Organisation', { address: address.toString(), owner }),
-    IntegrityViolation:    (ctx?: Record<string, unknown>) =>
-      cge('CG-E-010.007', 'CGUASError', 'FATAL', 'Registry', 'SHA-256-Hash des Segments stimmt nicht — Manipulation', ctx),
-    AddressOutOfRange:     (value: bigint) =>
-      cge('CG-E-010.008', 'CGUASError', 'FATAL', 'Engine', 'CGUA-Wert außerhalb des CGUAS-Adressraums', { value: value.toString() }),
+    segmentNotFound:      mk('CG-E-010.001','CGUASError','FATAL','CGUAS',404),
+    segmentOverlap:       mk('CG-E-010.002','CGUASError','FATAL','CGUAS',409),
+    invalidCGUA:          mk('CG-E-010.003','CGUASError','FATAL','CGUAS',422),
+    segmentRevoked:       mk('CG-E-010.004','CGUASError','FATAL','CGUAS',410),
+    federationTimeout:    mk('CG-E-010.005','CGUASError','FATAL','CGUAS',504),
+    addressOutOfRange:    mk('CG-E-010.006','CGUASError','FATAL','CGUAS',422),
+    segmentFull:          mk('CG-E-010.007','CGUASError','FATAL','CGUAS',507),
+    invalidSegmentSize:   mk('CG-E-010.008','CGUASError','FATAL','CGUAS',422),
   },
-
-  // ── CG-E-011 CGFSError (12 Sub-Codes, NEU v1.2 + v1.4) ───────────────────
+  // CG-E-011 CGFSError
   CGFSError: {
-    ManifestMissing:          () =>
-      cge('CG-E-011.001', 'CGFSError', 'FATAL', 'Validator', 'CGFS-Datei hat kein Manifest'),
-    ManifestInvalidJSON:      () =>
-      cge('CG-E-011.002', 'CGFSError', 'FATAL', 'Validator', 'Manifest ist kein gültiges JSON'),
-    ManifestMissingField:     (field: string) =>
-      cge('CG-E-011.003', 'CGFSError', 'FATAL', 'Validator', `Pflichtfeld im Manifest fehlt: ${field}`, { field }),
-    ManifestIntegrityViolation: () =>
-      cge('CG-E-011.004', 'CGFSError', 'FATAL', 'Validator', 'content_hash stimmt nicht mit Inhalt überein'),
-    DeprecatedTypeUsed:       (typeId: string) =>
-      cge('CG-E-011.005', 'CGFSError', 'ERROR', 'Validator', `Veralteter Dateityp verwendet: ${typeId}`, { typeId }),
-    TypeNotFound:             (typeId: string) =>
-      cge('CG-E-011.006', 'CGFSError', 'FATAL', 'Validator', `Dateityp nicht in CGFS-Registry: ${typeId}`, { typeId }),
-    RetentionViolation:       (specified: string, minimum: string) =>
-      cge('CG-E-011.007', 'CGFSError', 'FATAL', 'Validator', 'Retention unterschreitet Typ-Mindest-Retention', { specified, minimum }),
-    CGFIMismatch:             (expected: string, got: string) =>
-      cge('CG-E-011.008', 'CGFSError', 'FATAL', 'Validator', 'CGFI stimmt nicht mit berechnetem Wert überein', { expected, got }),
-    TombstoneExists:          (cgfi: string) =>
-      cge('CG-E-011.009', 'CGFSError', 'FATAL', 'Validator', 'Datei wurde logisch gelöscht (Tombstone)', { cgfi }),
-    NamespaceConflict:        (cgfi: string, namespace: string) =>
-      cge('CG-E-011.010', 'CGFSError', 'FATAL', 'Validator', 'Zwei Dateien mit identischer CGFI im selben Namespace', { cgfi, namespace }),
-    QKDCollision:             (ctx?: Record<string, unknown>) =>
-      cge('CG-E-011.011', 'CGFSError', 'FATAL', 'Engine', 'CGTA-Kollision innerhalb QKD-Link-Domäne (I-QKD-1)', ctx),
-    QKDDomainReuse:           (domainId: string) =>
-      cge('CG-E-011.012', 'CGFSError', 'FATAL', 'Engine', `QKD-Link-Domänen-ID über mehrere parallele Kanäle wiederverwendet (R-QKD2): ${domainId}`, { domainId }),
+    fileNotFound:         mk('CG-E-011.001','CGFSError','FATAL','CGFS',404),
+    hashMismatch:         mk('CG-E-011.002','CGFSError','FATAL','CGFS',422),
+    tombstoned:           mk('CG-E-011.003','CGFSError','FATAL','CGFS',410),
+    invalidCGFI:          mk('CG-E-011.004','CGFSError','FATAL','CGFS',422),
+    manifestConflict:     mk('CG-E-011.005','CGFSError','FATAL','CGFS',409),
+    storageQuotaExceeded: mk('CG-E-011.006','CGFSError','FATAL','CGFS',507),
+    invalidFileType:      mk('CG-E-011.007','CGFSError','FATAL','CGFS',422),
+    wormViolation:        mk('CG-E-011.008','CGFSError','FATAL','CGFS',409),
+    dsgvoRetention:       mk('CG-E-011.009','CGFSError','FATAL','CGFS',451),
+    replicationFailed:    mk('CG-E-011.010','CGFSError','FATAL','CGFS',503),
+    qkdCollision:         mk('CG-E-011.011','CGFSError','FATAL','CGFS',422),
+    qkdDomainReuse:       mk('CG-E-011.012','CGFSError','FATAL','CGFS',409),
   },
-
-} as const;
+};

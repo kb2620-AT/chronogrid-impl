@@ -2,23 +2,18 @@
   "name": "cg-storage",
   "version": "1.0.0",
   "type": "module",
-  "description": "ChronoGrid — Repository-Layer, PostgreSQL-Schema und Connection Pool (CG-STD-4100 Kap. 3)",
   "exports": {
-    ".":                        { "import": "./src/index.ts" },
-    "./repository.js":          { "import": "./src/repository.ts" },
-    "./pg-client.js":           { "import": "./src/pg-client.ts" },
-    "./pg-repository.js":       { "import": "./src/pg-repository.ts" },
-    "./repository-factory.js":  { "import": "./src/repository-factory.ts" }
+    ".":                       { "import": "./src/index.ts" },
+    "./repository.js":         { "import": "./src/repository.ts" },
+    "./pg-client.js":          { "import": "./src/pg-client.ts" },
+    "./pg-repository.js":      { "import": "./src/pg-repository.ts" },
+    "./repository-factory.js": { "import": "./src/repository-factory.ts" }
   },
-  "scripts": {
-    "build": "tsc --build"
-  },
+  "scripts": { "build": "tsc --build" },
   "dependencies": {
-    "cg-types":  "workspace:*",
-    "cg-cguas":  "workspace:*",
-    "pg":        "^8.11.0"
+    "cg-types": "workspace:*",
+    "cg-cguas": "workspace:*",
+    "pg": "^8.11.0"
   },
-  "devDependencies": {
-    "@types/pg": "^8.11.0"
-  }
+  "devDependencies": { "@types/pg": "^8.11.0" }
 }

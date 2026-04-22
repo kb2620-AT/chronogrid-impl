@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.env
 conformance-report.json
 .DS_Store
 *.log

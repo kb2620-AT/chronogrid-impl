@@ -1,48 +1,31 @@
 version: '3.9'
 
-# ============================================================================
-# ChronoGrid — Lokale Entwicklungsumgebung
-# Normative Grundlage: CG-STD-4100 v0.7 Kap. 3
-# ============================================================================
-
 services:
-  # PostgreSQL 16 — normative Storage-Engine
   postgres:
     image: postgres:16-alpine
-    container_name: chronogrid-db
+    container_name: cg-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB:       chronogrid
-      POSTGRES_USER:     chronogrid
-      POSTGRES_PASSWORD: chronogrid_dev   # Nur für lokale Entwicklung
+      POSTGRES_USER:     cg_user
+      POSTGRES_PASSWORD: cg_secret
     ports:
       - "5432:5432"
     volumes:
-      # Persistente Daten
-      - chronogrid_data:/var/lib/postgresql/data
-      # Schema automatisch beim Start laden
-      - ./packages/cg-storage/sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chronogrid -d chronogrid"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - cg-pg-data:/var/lib/postgresql/data
+      - ./packages/cg-storage/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
 
-  # pgAdmin 4 — optionale Web-UI für Datenbankinspektion
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: chronogrid-pgadmin
+    container_name: cg-pgadmin
     restart: unless-stopped
-    profiles: ["tools"]   # Nur mit: docker compose --profile tools up
     environment:
       PGADMIN_DEFAULT_EMAIL:    admin@chronogrid.local
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
 
 volumes:
-  chronogrid_data:
-    driver: local
+  cg-pg-data:

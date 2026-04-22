@@ -2,36 +2,23 @@
  * cg-storage/src/repository-factory.ts
  * Repository-Factory — CG-APP-0700 §9
  *
- * Wählt die Repository-Implementierung basierend auf STORAGE-Umgebungsvariable:
- *   STORAGE=memory   → In-Memory (Standard für Tests, kein PostgreSQL nötig)
- *   STORAGE=postgres → PostgreSQL (Produktion, CG-STD-4100 Level 2/3)
- *
- * Alle Repositories implementieren dieselben Interfaces — Code der sie
- * verwendet muss nicht wissen, welche Implementierung aktiv ist.
+ * SPRINT 7: Gibt Repository-Interfaces zurück (nicht konkrete Klassen).
+ * APIContext in handlers.ts verwendet nur noch Interfaces → PostgreSQL vollständig aktiviert.
  */
 
 import pg from 'pg';
 import type {
-  ITimepointRepository,
-  IDomainRepository,
-  IManifestRepository,
-  IRelationRepository,
+  ITimepointRepository, IDomainRepository,
+  IManifestRepository, IRelationRepository, ISegmentRepository,
 } from './repository.js';
 import {
-  InMemoryTimepointRepository,
-  InMemoryDomainRepository,
-  InMemoryManifestRepository,
-  InMemoryRelationRepository,
+  InMemoryTimepointRepository, InMemoryDomainRepository,
+  InMemoryManifestRepository, InMemoryRelationRepository, InMemorySegmentRepository,
 } from './repository.js';
 import {
-  PgTimepointRepository,
-  PgDomainRepository,
-  PgManifestRepository,
-  PgRelationRepository,
-  PgSegmentRepository,
+  PgTimepointRepository, PgDomainRepository,
+  PgManifestRepository, PgRelationRepository, PgSegmentRepository,
 } from './pg-repository.js';
-import type { ISegmentRepository } from './repository.js';
-import { InMemorySegmentRepository } from './repository.js';
 
 export type StorageBackend = 'memory' | 'postgres';
 
@@ -44,26 +31,11 @@ export interface RepositoryBundle {
   backend:    StorageBackend;
 }
 
-/**
- * Erstellt alle Repositories für das konfigurierte Backend.
- *
- * @param pool  PostgreSQL Pool (nur benötigt wenn backend='postgres')
- * @param backend  'memory' | 'postgres' (Standard: STORAGE-Env oder 'memory')
- */
-export function createRepositories(
-  pool?: pg.Pool,
-  backend?: StorageBackend,
-): RepositoryBundle {
-  const resolvedBackend: StorageBackend =
-    backend ??
-    (process.env['STORAGE'] === 'postgres' ? 'postgres' : 'memory');
+export function createRepositories(pool?: pg.Pool, backend?: StorageBackend): RepositoryBundle {
+  const b: StorageBackend = backend ?? (process.env['STORAGE'] === 'postgres' ? 'postgres' : 'memory');
 
-  if (resolvedBackend === 'postgres') {
-    if (!pool) {
-      throw new Error(
-        'createRepositories: PostgreSQL Pool wird benötigt wenn STORAGE=postgres',
-      );
-    }
+  if (b === 'postgres') {
+    if (!pool) throw new Error('PostgreSQL-Pool erforderlich für STORAGE=postgres');
     return {
       timepoints: new PgTimepointRepository(pool),
       domains:    new PgDomainRepository(pool),
@@ -74,7 +46,6 @@ export function createRepositories(
     };
   }
 
-  // Default: In-Memory (Tests, lokale Entwicklung ohne PostgreSQL)
   return {
     timepoints: new InMemoryTimepointRepository(),
     domains:    new InMemoryDomainRepository(),

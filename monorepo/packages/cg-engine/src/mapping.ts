@@ -1,184 +1,81 @@
 /**
  * cg-engine/src/mapping.ts
- * Mapping-Ausführung — CG-STD-3100 v1.5 Kap. 8
- * Piecewise-linear (Klasse A) + Lookup (Schaltsekunden)
- * Pure functions — kein Netzwerkzugriff, kein externer Zustand (Kap. 2.3)
+ * Klasse-A-Mappings: TAI↔UTC, TAI↔GPS, Schaltsekunden
+ * CG-STD-3100 v1.5 Kap. 8 | CG-STD-2100 v1.4 Kap. 7 (normative Tabelle)
  */
 
-import type { CTDDLDomain, MappingBlock } from 'cg-types/domain.js';
-import { Errors } from 'cg-types/errors.js';
-import { LEAP_SECONDS, taiOffsetAtUtc } from './engine.js';
+import { iso8601ToSeconds } from './gregorian.js';
 
-// ── Mapping-Kontext ────────────────────────────────────────────────────────────
-export interface MappingContext {
-  sourceDomain: CTDDLDomain;
-  targetDomain: CTDDLDomain;
-  rule: MappingBlock;
-}
+/** Normative Schaltsekunden-Tabelle (CG-STD-2100 v1.4 Kap. 7) */
+const LEAP_SECONDS: Array<{ utcSeconds: bigint; taiMinusUtc: bigint }> = [
+  { utcSeconds: iso8601ToSeconds('1972-01-01T00:00:00Z'), taiMinusUtc: 10n },
+  { utcSeconds: iso8601ToSeconds('1972-07-01T00:00:00Z'), taiMinusUtc: 11n },
+  { utcSeconds: iso8601ToSeconds('1973-01-01T00:00:00Z'), taiMinusUtc: 12n },
+  { utcSeconds: iso8601ToSeconds('1974-01-01T00:00:00Z'), taiMinusUtc: 13n },
+  { utcSeconds: iso8601ToSeconds('1975-01-01T00:00:00Z'), taiMinusUtc: 14n },
+  { utcSeconds: iso8601ToSeconds('1976-01-01T00:00:00Z'), taiMinusUtc: 15n },
+  { utcSeconds: iso8601ToSeconds('1977-01-01T00:00:00Z'), taiMinusUtc: 16n },
+  { utcSeconds: iso8601ToSeconds('1978-01-01T00:00:00Z'), taiMinusUtc: 17n },
+  { utcSeconds: iso8601ToSeconds('1979-01-01T00:00:00Z'), taiMinusUtc: 18n },
+  { utcSeconds: iso8601ToSeconds('1980-01-01T00:00:00Z'), taiMinusUtc: 19n },
+  { utcSeconds: iso8601ToSeconds('1981-07-01T00:00:00Z'), taiMinusUtc: 20n },
+  { utcSeconds: iso8601ToSeconds('1982-07-01T00:00:00Z'), taiMinusUtc: 21n },
+  { utcSeconds: iso8601ToSeconds('1983-07-01T00:00:00Z'), taiMinusUtc: 22n },
+  { utcSeconds: iso8601ToSeconds('1985-07-01T00:00:00Z'), taiMinusUtc: 23n },
+  { utcSeconds: iso8601ToSeconds('1988-01-01T00:00:00Z'), taiMinusUtc: 24n },
+  { utcSeconds: iso8601ToSeconds('1990-01-01T00:00:00Z'), taiMinusUtc: 25n },
+  { utcSeconds: iso8601ToSeconds('1991-01-01T00:00:00Z'), taiMinusUtc: 26n },
+  { utcSeconds: iso8601ToSeconds('1992-07-01T00:00:00Z'), taiMinusUtc: 27n },
+  { utcSeconds: iso8601ToSeconds('1993-07-01T00:00:00Z'), taiMinusUtc: 28n },
+  { utcSeconds: iso8601ToSeconds('1994-07-01T00:00:00Z'), taiMinusUtc: 29n },
+  { utcSeconds: iso8601ToSeconds('1996-01-01T00:00:00Z'), taiMinusUtc: 30n },
+  { utcSeconds: iso8601ToSeconds('1997-07-01T00:00:00Z'), taiMinusUtc: 31n },
+  { utcSeconds: iso8601ToSeconds('1999-01-01T00:00:00Z'), taiMinusUtc: 32n },
+  { utcSeconds: iso8601ToSeconds('2006-01-01T00:00:00Z'), taiMinusUtc: 33n },
+  { utcSeconds: iso8601ToSeconds('2009-01-01T00:00:00Z'), taiMinusUtc: 34n },
+  { utcSeconds: iso8601ToSeconds('2012-07-01T00:00:00Z'), taiMinusUtc: 35n },
+  { utcSeconds: iso8601ToSeconds('2015-07-01T00:00:00Z'), taiMinusUtc: 36n },
+  { utcSeconds: iso8601ToSeconds('2017-01-01T00:00:00Z'), taiMinusUtc: 37n },
+];
 
-// ── Lineares Mapping (Kap. 8.3) ──────────────────────────────────────────────
-// Für einfache lineare Relationen: target = slope * source + offset
-
-export interface LinearRule {
-  slope: bigint;     // Numerator des Skalierungsfaktors
-  denominator: bigint; // Denominator (für rationale Faktoren)
-  offset: bigint;    // Additive Konstante
-}
-
-export function executeLinearMapping(sourceNs: bigint, rule: LinearRule): bigint {
-  if (rule.denominator === 0n) {
-    throw Errors.MappingError.DivisionByZero({ rule });
+/** TAI-UTC-Offset für einen gegebenen UTC-Sekundenwert */
+export function taiMinusUtcAt(utcSeconds: bigint): bigint {
+  let offset = 0n;
+  for (const ls of LEAP_SECONDS) {
+    if (utcSeconds >= ls.utcSeconds) offset = ls.taiMinusUtc;
+    else break;
   }
-  return (sourceNs * rule.slope) / rule.denominator + rule.offset;
+  return offset;
 }
 
-// ── Schaltsekunden-Lookup (Kap. 8.5, normativ) ────────────────────────────────
-// Binärsuche: größter Eintrag mit entry.utcFrom <= utc
-
-export function lookupTaiOffset(utcSeconds: bigint): number {
-  // Vor 1972-01-01: kein normierter Offset (Fehler)
-  if (utcSeconds < BigInt('63072000')) { // 1972-01-01 00:00:00 UTC
-    throw Errors.MappingError.RefPointOutOfExtent({
-      reason: 'UTC vor 1972-01-01 — kein normierter TAI-Offset',
-      utcSeconds: utcSeconds.toString(),
-    });
-  }
-
-  let lo = 0;
-  let hi = LEAP_SECONDS.length - 1;
-  let result = 10; // TAI-UTC 1972-01-01 Basiswert
-
-  while (lo <= hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (LEAP_SECONDS[mid].utcSeconds <= utcSeconds) {
-      result = LEAP_SECONDS[mid].taiOffset;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return result;
-}
-
-// ── Piecewise-linear Mapping (Kap. 8.4, normativ) ────────────────────────────
-
-export interface PiecewiseSegment {
-  utcFrom: bigint;   // UTC-Sekunden Beginn dieses Segments
-  taiOffset: number; // TAI-UTC in diesem Segment (Sekunden)
-}
-
-/** UTC-Sekunden → TAI-Sekunden (piecewise-linear via normative Schaltsekunden-Tabelle) */
+/** UTC-Sekunden → TAI-Sekunden */
 export function utcToTai(utcSeconds: bigint): bigint {
-  const offset = lookupTaiOffset(utcSeconds);
-  return utcSeconds + BigInt(offset);
+  return utcSeconds + taiMinusUtcAt(utcSeconds);
 }
 
-/** TAI-Sekunden → UTC-Sekunden (inverse piecewise-linear) */
+/** TAI-Sekunden → UTC-Sekunden (Näherung, iterativ) */
 export function taiToUtc(taiSeconds: bigint): bigint {
-  // Iterativ konvergieren (max. 3 Iterationen ausreichend)
-  let offset = 37; // Heuristik: aktueller Wert
+  // Iterative Korrektur: TAI-Offset hängt von UTC ab
+  let utc = taiSeconds - 37n; // Start mit aktuellem Offset
   for (let i = 0; i < 3; i++) {
-    const approxUtc = taiSeconds - BigInt(offset);
-    try {
-      offset = lookupTaiOffset(approxUtc);
-    } catch {
-      break; // vor 1972 — offset bleibt bei Heuristik
-    }
+    utc = taiSeconds - taiMinusUtcAt(utc);
   }
-  return taiSeconds - BigInt(offset);
+  return utc;
 }
 
-/** UTC-Nanosekunden → TAI-Nanosekunden */
-export function utcNsToTaiNs(utcNs: bigint): bigint {
-  const utcSec = utcNs / BigInt(1_000_000_000);
-  const utcSubNs = utcNs % BigInt(1_000_000_000);
-  const offset = BigInt(lookupTaiOffset(utcSec));
-  return (utcSec + offset) * BigInt(1_000_000_000) + utcSubNs;
+/** GPS Epoch: 1980-01-06T00:00:00Z = UTC */
+const GPS_EPOCH_UTC = iso8601ToSeconds('1980-01-06T00:00:00Z');
+const TAI_MINUS_GPS = 19n; // GPS läuft nicht mit Schaltsekunden
+
+/** GPS-Sekunden → TAI-Sekunden */
+export function gpsToTai(gpsSecs: bigint): bigint {
+  return GPS_EPOCH_UTC + gpsSecs + TAI_MINUS_GPS;
 }
 
-/** TAI-Nanosekunden → UTC-Nanosekunden */
-export function taiNsToUtcNs(taiNs: bigint): bigint {
-  const taiSec = taiNs / BigInt(1_000_000_000);
-  const taiSubNs = taiNs % BigInt(1_000_000_000);
-  const utcSec = taiToUtc(taiSec);
-  return utcSec * BigInt(1_000_000_000) + taiSubNs;
+/** TAI-Sekunden → GPS-Sekunden */
+export function taiToGps(taiSecs: bigint): bigint {
+  return taiSecs - GPS_EPOCH_UTC - TAI_MINUS_GPS;
 }
 
-// ── GPS ↔ TAI (linear, konstant +19s) ────────────────────────────────────────
-// GPS-Epoche: 1980-01-06T00:00:00Z = TAI + 19s (kein Schaltsekunden-Update nötig)
-
-const GPS_TAI_OFFSET_S = 19n;
-const GPS_TAI_OFFSET_NS = GPS_TAI_OFFSET_S * BigInt(1_000_000_000);
-
-/** GPS-Nanosekunden → TAI-Nanosekunden */
-export function gpsNsToTaiNs(gpsNs: bigint): bigint {
-  return gpsNs + GPS_TAI_OFFSET_NS;
-}
-
-/** TAI-Nanosekunden → GPS-Nanosekunden */
-export function taiNsToGpsNs(taiNs: bigint): bigint {
-  return taiNs - GPS_TAI_OFFSET_NS;
-}
-
-// ── Unix ↔ TAI (piecewise-linear) ────────────────────────────────────────────
-// Unix ignoriert Schaltsekunden (POSIX) — TAI ist linear und korrekt.
-// Hinweis: Unix → TAI ist nicht bijektiv an Schaltsekunden-Punkten.
-
-/** Unix-Nanosekunden → TAI-Nanosekunden */
-export function unixNsToTaiNs(unixNs: bigint): bigint {
-  // Unix ist identisch UTC aus ChronoGrid-Sicht (piecewise-linear)
-  return utcNsToTaiNs(unixNs);
-}
-
-/** TAI-Nanosekunden → Unix-Nanosekunden */
-export function taiNsToUnixNs(taiNs: bigint): bigint {
-  return taiNsToUtcNs(taiNs);
-}
-
-// ── Mapping-Dispatcher ────────────────────────────────────────────────────────
-// Wählt die korrekte Mapping-Funktion basierend auf Domain-Namen.
-
-export type KnownDomain = 'TAI' | 'UTC' | 'Unix' | 'GPS' | 'Gregorian';
-
-/**
- * Konvertiert einen TAI-Nanosekunden-Wert in eine Ziel-Domain.
- * Dies ist das zentrale Interface für alle Level-1/2-Konvertierungen.
- */
-export function taiNsToTarget(taiNs: bigint, targetDomain: string): bigint {
-  switch (targetDomain.toLowerCase()) {
-    case 'tai':       return taiNs;
-    case 'utc':       return taiNsToUtcNs(taiNs);
-    case 'unix':      return taiNsToUnixNs(taiNs);
-    case 'gps':       return taiNsToGpsNs(taiNs);
-    default:
-      throw Errors.MappingError.TargetDomainNotFound(targetDomain);
-  }
-}
-
-/**
- * Konvertiert einen Quell-Domain-Wert zu TAI-Nanosekunden.
- */
-export function sourceToTaiNs(sourceNs: bigint, sourceDomain: string): bigint {
-  switch (sourceDomain.toLowerCase()) {
-    case 'tai':  return sourceNs;
-    case 'utc':  return utcNsToTaiNs(sourceNs);
-    case 'unix': return unixNsToTaiNs(sourceNs);
-    case 'gps':  return gpsNsToTaiNs(sourceNs);
-    default:
-      throw Errors.MappingError.TargetDomainNotFound(sourceDomain);
-  }
-}
-
-/**
- * Vollständige Konvertierung: Quelle → TAI → Ziel (normativ).
- * Mapping-Kette: source → TAI → target (max. 2 Schritte für Level 1/2).
- * Längere Ketten: CG-STD-3100 Kap. 8, max. 8 Schritte (CG-E-005.010).
- */
-export function convert(
-  valueNs: bigint,
-  sourceDomain: string,
-  targetDomain: string,
-): bigint {
-  const taiNs = sourceToTaiNs(valueNs, sourceDomain);
-  return taiNsToTarget(taiNs, targetDomain);
-}
+/** Aktueller Schaltsekunden-Offset (TAI−UTC) */
+export const CURRENT_TAI_MINUS_UTC = 37n;
