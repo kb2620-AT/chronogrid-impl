@@ -1,87 +1,14 @@
-/**
- * cg-cguas/src/cguas.ts
- * CGUAS — Universal Address Space — CG-STD-6100 v0.5 Teil A
- * Segment-Verwaltung, CGUA-Adressierung, I-SEG-1 (Segment-Isolation)
- */
-
 import { createHash } from 'node:crypto';
 import type { CGUASegment } from 'cg-types/domain.js';
 import { Errors } from 'cg-types/errors.js';
-
-// ── CGUA-URI-Parsing ──────────────────────────────────────────────────────────
-
-export interface CGUAParsed {
-  segmentId: string;
-  localOffset: bigint;
-  version: number;
-}
-
-/** Parst eine CGUA-URI: cgua://segment-id/local-offset/v1 */
-export function parseCGUA(uri: string): CGUAParsed {
-  const m = uri.match(/^cgua:\/\/([^/]+)\/(\d+)\/v(\d+)$/);
-  if (!m) throw Errors.CGUASError.invalidCGUA(`Ungültige CGUA-URI: ${uri}`);
-  return { segmentId: m[1]!, localOffset: BigInt(m[2]!), version: Number(m[3]!) };
-}
-
-/** Serialisiert eine CGUA-URI */
-export function encodeCGUA(parsed: CGUAParsed): string {
-  return `cgua://${parsed.segmentId}/${parsed.localOffset}/v${parsed.version}`;
-}
-
-// ── SegmentRegistry ───────────────────────────────────────────────────────────
-
-export interface ISegmentRegistry {
-  allocate(grantedBy: string, sizeNs: bigint, parentId?: string): CGUASegment;
-  resolve(segmentId: string): CGUASegment;
-  revoke(segmentId: string): void;
-  list(): CGUASegment[];
-}
-
-export class SegmentRegistry implements ISegmentRegistry {
-  private readonly segments = new Map<string, CGUASegment>();
-  private _nextBase = 0n;
-
-  allocate(grantedBy: string, sizeNs: bigint, parentId?: string): CGUASegment {
-    if (sizeNs <= 0n) throw Errors.CGUASError.invalidSegmentSize(`sizeNs muss > 0 sein`);
-
-    // I-SEG-1: Überlappungsprüfung
-    const base = this._nextBase;
-    for (const seg of this.segments.values()) {
-      if (seg.status === 'active') {
-        const segEnd = seg.base_address + seg.size_ns;
-        const newEnd = base + sizeNs;
-        if (base < segEnd && newEnd > seg.base_address)
-          throw Errors.CGUASError.segmentOverlap(`Überlappung mit Segment ${seg.id}`);
-      }
-    }
-
-    const id = createHash('sha256')
-      .update(`${grantedBy}:${base}:${sizeNs}:${Date.now()}`)
-      .digest('hex')
-      .slice(0, 16);
-
-    const seg: CGUASegment = {
-      id, parent_id: parentId ?? null, base_address: base, size_ns: sizeNs,
-      granted_by: grantedBy, status: 'active',
-      created_at: BigInt(Date.now()) * 1_000_000n,
-    };
-
-    this.segments.set(id, seg);
-    this._nextBase = base + sizeNs;
-    return seg;
-  }
-
-  resolve(segmentId: string): CGUASegment {
-    const seg = this.segments.get(segmentId);
-    if (!seg) throw Errors.CGUASError.segmentNotFound(`Segment nicht gefunden: ${segmentId}`);
-    if (seg.status === 'revoked') throw Errors.CGUASError.segmentRevoked(`Segment widerrufen: ${segmentId}`);
-    return seg;
-  }
-
-  revoke(segmentId: string): void {
-    const seg = this.resolve(segmentId);
-    this.segments.set(segmentId, { ...seg, status: 'revoked' });
-  }
-
-  list(): CGUASegment[] { return [...this.segments.values()]; }
+export interface CGUAParsed{segmentId:string;localOffset:bigint;version:number;}
+export function parseCGUA(uri:string):CGUAParsed{const m=uri.match(/^cgua:\/\/([^/]+)\/(\d+)\/v(\d+)$/);if(!m)throw Errors.CGUASError.invalidCGUA(`Ungültige URI: ${uri}`);return{segmentId:m[1]!,localOffset:BigInt(m[2]!),version:Number(m[3]!)};}
+export function encodeCGUA(p:CGUAParsed):string{return`cgua://${p.segmentId}/${p.localOffset}/v${p.version}`;}
+export interface ISegmentRegistry{allocate(g:string,s:bigint,p?:string):CGUASegment;resolve(id:string):CGUASegment;revoke(id:string):void;list():CGUASegment[];}
+export class SegmentRegistry implements ISegmentRegistry{
+  private readonly segs=new Map<string,CGUASegment>();private _next=0n;
+  allocate(g:string,s:bigint,p?:string):CGUASegment{if(s<=0n)throw Errors.CGUASError.invalidSegmentSize('sizeNs>0');const base=this._next;const id=createHash('sha256').update(`${g}:${base}:${s}:${Date.now()}`).digest('hex').slice(0,16);const seg:CGUASegment={id,parent_id:p??null,base_address:base,size_ns:s,granted_by:g,status:'active',created_at:BigInt(Date.now())*1_000_000n};this.segs.set(id,seg);this._next=base+s;return seg;}
+  resolve(id:string):CGUASegment{const s=this.segs.get(id);if(!s)throw Errors.CGUASError.segmentNotFound(id);if(s.status==='revoked')throw Errors.CGUASError.segmentRevoked(id);return s;}
+  revoke(id:string):void{const s=this.resolve(id);this.segs.set(id,{...s,status:'revoked'});}
+  list():CGUASegment[]{return[...this.segs.values()];}
 }

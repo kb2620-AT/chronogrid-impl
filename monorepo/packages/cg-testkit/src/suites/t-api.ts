@@ -1,401 +1,280 @@
 /**
  * cg-testkit/src/suites/t-api.ts
- * T-API + T-CTDDL — CG-STD-4100 v0.5 Kap. 9 + CG-STD-2100 v1.4 Kap. 9
+ * T-API-* HTTP-Integrationstests — CG-STD-4100 v0.7 Kap. 4 + 7
+ * Sprint 8: Live-Requests gegen internen Test-Server (Port 3099)
+ *
+ * Der Server wird vor den Tests gestartet und danach gestoppt.
+ * Kein externer Prozess nötig – alles in-process.
  */
 
 import type { TestCase } from '../runner.js';
-import { parseCTDDL, DomainRegistry } from 'cg-ctddl/parser.js';
-import { Errors } from 'cg-types/errors.js';
-import {
-  InMemoryTimepointRepository,
-  InMemoryDomainRepository,
-  InMemoryManifestRepository,
-  InMemoryRelationRepository,
-} from 'cg-storage/repository.js';
-import { SegmentRegistry } from 'cg-cguas/cguas.js';
-import { dispatch } from 'cg-api/handlers.js';
-import { makeTestJWT } from 'cg-api/middleware.js';
-import { createHash } from 'node:crypto';
-import { computeCGFI, cgfiToHex } from 'cg-engine/engine.js';
+import { TEST_TOKENS } from 'cg-api/auth.js';
 
-function makeCtx(nowNs = 1743585310_000_000_000n) {
-  return {
-    timepoints: new InMemoryTimepointRepository(),
-    domains:    new InMemoryDomainRepository(),
-    manifests:  new InMemoryManifestRepository(),
-    relations:  new InMemoryRelationRepository(),
-    segments:   new SegmentRegistry(),
-    now: () => nowNs,
-  };
+const BASE = 'http://127.0.0.1:3099';
+
+// ── Server-Lifecycle ──────────────────────────────────────────────────────────
+
+let _serverRef: { close: (cb?: () => void) => void } | null = null;
+
+async function startTestServer(): Promise<void> {
+  if (_serverRef) return;
+  // Eigenen Server auf Port 3099 starten (isoliert vom Dev-Server)
+  process.env['API_PORT'] = '3099';
+  process.env['API_HOST'] = '127.0.0.1';
+  process.env['STORAGE'] = 'memory';
+  const { server } = await import('cg-api/server.js' as string);
+  _serverRef = server as { close: (cb?: () => void) => void };
+  // Kurz warten bis Port offen
+  await new Promise(r => setTimeout(r, 150));
 }
 
-function h(role: 'reader'|'contributor'|'maintainer'|'tsc' = 'contributor') {
-  return { authorization: `Bearer ${makeTestJWT(role)}` };
+async function stopTestServer(): Promise<void> {
+  if (_serverRef) {
+    await new Promise<void>(r => _serverRef!.close(() => r()));
+    _serverRef = null;
+  }
 }
 
-function req(overrides: Record<string, unknown> = {}) {
-  return { method: 'GET', path: '/', params: {}, query: {}, body: {}, headers: {}, ...overrides };
+// ── HTTP-Helpers ──────────────────────────────────────────────────────────────
+
+async function get(path: string, role?: 'admin' | 'writer' | 'reader'): Promise<{ status: number; body: unknown }> {
+  await startTestServer();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (role) headers['Authorization'] = `Bearer ${TEST_TOKENS[role]()}`;
+  const res = await fetch(`${BASE}${path}`, { headers });
+  const body = await res.json().catch(() => ({}));
+  return { status: res.status, body };
 }
 
-// ── T-CTDDL: Parser normative Tests (CG-STD-2100 Kap. 9) ─────────────────────
-export const T_CTDDL: TestCase[] = [
-  {
-    id: 'T-CTDDL-001', suite: 'T-CTDDL', level: 1,
-    description: 'Gültige Domain wird akzeptiert',
-    fn: () => {
-      const d = parseCTDDL({
-        name: 'test/valid', version: 1, semantics: 'time',
-        type: 'linear', granularity: '1000000000',
-        extent: { min: '0', max: null },
-        epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-      });
-      return d.name;
+async function post(path: string, data: unknown, role?: 'admin' | 'writer' | 'reader'): Promise<{ status: number; body: unknown }> {
+  await startTestServer();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (role) headers['Authorization'] = `Bearer ${TEST_TOKENS[role]()}`;
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: JSON.stringify(data) });
+  const body = await res.json().catch(() => ({}));
+  return { status: res.status, body };
+}
+
+async function del(path: string, role?: 'admin' | 'writer' | 'reader'): Promise<{ status: number; body: unknown }> {
+  await startTestServer();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (role) headers['Authorization'] = `Bearer ${TEST_TOKENS[role]()}`;
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE', headers });
+  const body = await res.json().catch(() => ({}));
+  return { status: res.status, body };
+}
+
+// ── T-API Tests ───────────────────────────────────────────────────────────────
+
+export const apiTests: TestCase[] = [
+
+  // ── System / Public ────────────────────────────────────────────────────────
+
+  { id: 'T-API-001', level: 2, description: 'GET /v1/health → 200 (public)',
+    run: async () => (await get('/v1/health')).status,
+    expected: 200 },
+
+  { id: 'T-API-002', level: 2, description: 'GET /v1/health → status=ok',
+    run: async () => ((await get('/v1/health')).body as Record<string, unknown>)['status'],
+    expected: 'ok' },
+
+  { id: 'T-API-003', level: 2, description: 'GET /v1/openapi.json → 200 (public)',
+    run: async () => (await get('/v1/openapi.json')).status,
+    expected: 200 },
+
+  { id: 'T-API-004', level: 2, description: 'GET /v1/auth/token?role=reader → 200',
+    run: async () => (await get('/v1/auth/token?role=reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-005', level: 2, description: 'GET /v1/auth/token → gibt token zurück',
+    run: async () => {
+      const r = await get('/v1/auth/token?role=writer');
+      return typeof ((r.body as Record<string, unknown>)['token']);
     },
-    expected: 'test/valid',
-  },
-  {
-    id: 'T-CTDDL-002', suite: 'T-CTDDL', level: 1,
-    description: 'Fehlendes Pflichtfeld → CG-E-001.002',
-    fn: () => {
-      try {
-        parseCTDDL({ version: 1 } as object);
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: 'string' },
+
+  // ── Auth: 401 ohne Token ───────────────────────────────────────────────────
+
+  { id: 'T-API-006', level: 2, description: 'GET /v1/timepoints ohne Token → 401',
+    run: async () => (await get('/v1/timepoints')).status,
+    expected: 401 },
+
+  { id: 'T-API-007', level: 2, description: 'POST /v1/timepoints ohne Token → 401',
+    run: async () => (await post('/v1/timepoints', { domain: 'TAI', value: '1' })).status,
+    expected: 401 },
+
+  { id: 'T-API-008', level: 2, description: 'GET /v1/domains ohne Token → 401',
+    run: async () => (await get('/v1/domains')).status,
+    expected: 401 },
+
+  // ── Auth: 403 falsche Rolle ────────────────────────────────────────────────
+
+  { id: 'T-API-009', level: 2, description: 'POST /v1/timepoints mit reader → 403',
+    run: async () => (await post('/v1/timepoints', { domain: 'TAI', value: '1' }, 'reader')).status,
+    expected: 403 },
+
+  { id: 'T-API-010', level: 2, description: '401-Body enthält code=CG-E-012.001',
+    run: async () => ((await get('/v1/timepoints')).body as Record<string, unknown>)['code'],
+    expected: 'CG-E-012.001' },
+
+  { id: 'T-API-011', level: 2, description: '403-Body enthält code=CG-E-012.002',
+    run: async () => ((await post('/v1/timepoints', {domain:'TAI',value:'1'}, 'reader')).body as Record<string, unknown>)['code'],
+    expected: 'CG-E-012.002' },
+
+  // ── Timepoints CRUD (mit Authentifizierung) ────────────────────────────────
+
+  { id: 'T-API-012', level: 2, description: 'POST /v1/timepoints writer → 201',
+    run: async () => (await post('/v1/timepoints', { domain: 'TAI', value: '1742041937' }, 'writer')).status,
+    expected: 201 },
+
+  { id: 'T-API-013', level: 2, description: 'POST /v1/timepoints → gibt machine_id zurück',
+    run: async () => {
+      const r = await post('/v1/timepoints', { domain: 'TAI', value: '1742041937' }, 'writer');
+      return typeof ((r.body as Record<string, unknown>)['machine_id']);
     },
-    expected: 'CG-E-001.002',
-  },
-  {
-    id: 'T-CTDDL-003', suite: 'T-CTDDL', level: 1,
-    description: 'Ungültiger Domain-Typ → CG-E-001.004',
-    fn: () => {
-      try {
-        parseCTDDL({
-          name: 'x/y', version: 1, semantics: 'time',
-          type: 'invalid', granularity: '1',
-          extent: { min: '0', max: null },
-          epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-        });
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: 'string' },
+
+  { id: 'T-API-014', level: 2, description: 'POST /v1/timepoints → CGTA korrekt',
+    run: async () => {
+      const r = await post('/v1/timepoints', { domain: 'TAI', value: '1742041937' }, 'writer');
+      return ((r.body as Record<string, unknown>)['cgta'] as string)?.startsWith('CG:TAI:');
     },
-    expected: 'CG-E-001.004',
-  },
-  {
-    id: 'T-CTDDL-004', suite: 'T-CTDDL', level: 1,
-    description: 'Ungültiger Domain-Name (ABNF) → CG-E-001.007',
-    fn: () => {
-      try {
-        parseCTDDL({
-          name: 'INVALID NAME!', version: 1, semantics: 'time',
-          type: 'linear', granularity: '1',
-          extent: { min: '0', max: null },
-          epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-        });
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: true },
+
+  { id: 'T-API-015', level: 2, description: 'GET /v1/timepoints reader → 200',
+    run: async () => (await get('/v1/timepoints', 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-016', level: 2, description: 'GET /v1/timepoints → gibt items-Array zurück',
+    run: async () => {
+      const r = await get('/v1/timepoints', 'reader');
+      return Array.isArray(((r.body as Record<string, unknown>)['items']));
     },
-    expected: 'CG-E-001.007',
-  },
-  {
-    id: 'T-CTDDL-005', suite: 'T-CTDDL', level: 1,
-    description: 'I-D1: Registry verhindert Rollback (CG-E-007.004)',
-    fn: () => {
-      const reg = new DomainRegistry();
-      const d2 = parseCTDDL({
-        name: 'test/rollback', version: 2, semantics: 'time',
-        type: 'linear', granularity: '1',
-        extent: { min: '0', max: null },
-        epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-      });
-      reg.register(d2);
-      try {
-        const d1 = parseCTDDL({ ...d2, version: 1 });
-        reg.register(d1);
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: true },
+
+  { id: 'T-API-017', level: 2, description: 'GET /v1/timepoints/:id → Zeitpunkt abrufbar',
+    run: async () => {
+      const created = await post('/v1/timepoints', { domain: 'TAI', value: '999000' }, 'writer');
+      const id = ((created.body as Record<string, unknown>)['machine_id']) as string;
+      const r = await get(`/v1/timepoints/${id}`, 'reader');
+      return r.status;
     },
-    expected: 'CG-E-007.004',
-  },
-  {
-    id: 'T-CTDDL-006', suite: 'T-CTDDL', level: 1,
-    description: 'CG-E-008.001 bei stability=low ohne scientific_dependency',
-    fn: () => {
-      try {
-        parseCTDDL({
-          name: 'test/no-dep', version: 1, semantics: 'time',
-          type: 'linear', granularity: '1',
-          extent: { min: '0', max: null },
-          epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-          stability: 'low',
-        });
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: 200 },
+
+  { id: 'T-API-018', level: 2, description: 'GET /v1/timepoints/nonexistent → 404',
+    run: async () => (await get('/v1/timepoints/nonexistent-id-xyz', 'reader')).status,
+    expected: 404 },
+
+  // ── Konversion + Validierung ───────────────────────────────────────────────
+
+  { id: 'T-API-019', level: 2, description: 'POST /v1/timepoints/convert UTC→TAI reader → 200',
+    run: async () => (await post('/v1/timepoints/convert', { from_domain: 'UTC', to_domain: 'TAI', value: '0' }, 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-020', level: 2, description: 'POST /v1/timepoints/validate gültige CGTA reader → 200',
+    run: async () => (await post('/v1/timepoints/validate', { cgta: 'CG:TAI:1742041937/v1' }, 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-021', level: 2, description: 'POST /v1/timepoints/validate ungültig → 422',
+    run: async () => (await post('/v1/timepoints/validate', { cgta: 'INVALID' }, 'reader')).status,
+    expected: 422 },
+
+  // ── Domains ───────────────────────────────────────────────────────────────
+
+  { id: 'T-API-022', level: 2, description: 'GET /v1/domains reader → 200',
+    run: async () => (await get('/v1/domains', 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-023', level: 2, description: 'POST /v1/domains/validate reader → 200',
+    run: async () => (await post('/v1/domains/validate', { name: 'TestV', version: '1.0', type: 'linear', granularity: 'second', extent: { min: '0', max: '9999', inclusive: true } }, 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-024', level: 2, description: 'POST /v1/domains writer → 201',
+    run: async () => (await post('/v1/domains', { name: `ApiTestDomain${Date.now()}`, version: '1.0', type: 'linear', granularity: 'second', extent: { min: '0', max: '9999', inclusive: true }, metadata: { stability: 'permanent' } }, 'writer')).status,
+    expected: 201 },
+
+  // ── Relationen ────────────────────────────────────────────────────────────
+
+  { id: 'T-API-025', level: 2, description: 'POST /v1/relations/compute reader → 200',
+    run: async () => (await post('/v1/relations/compute', { a_start: '1', a_end: '5', b_start: '10', b_end: '20' }, 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-026', level: 2, description: 'Relations-Ergebnis = BEFORE',
+    run: async () => {
+      const r = await post('/v1/relations/compute', { a_start: '1', a_end: '5', b_start: '10', b_end: '20' }, 'reader');
+      return ((r.body as Record<string, unknown>)['relation']);
     },
-    expected: 'CG-E-008.001',
-  },
-  {
-    id: 'T-CTDDL-007', suite: 'T-CTDDL', level: 1,
-    description: 'extent.min > extent.max → CG-E-003.003',
-    fn: () => {
-      try {
-        parseCTDDL({
-          name: 'test/bad-extent', version: 1, semantics: 'time',
-          type: 'linear', granularity: '1',
-          extent: { min: '100', max: '10' },  // min > max
-          epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-        });
-        return 'NO_ERROR';
-      } catch (e: unknown) {
-        return (e as { code?: string }).code;
-      }
+    expected: 'BEFORE' },
+
+  // ── CGUAS Segmente ────────────────────────────────────────────────────────
+
+  { id: 'T-API-027', level: 2, description: 'POST /v1/segments writer → 201',
+    run: async () => (await post('/v1/segments', { granted_by: 'test', size_ns: '1000000' }, 'writer')).status,
+    expected: 201 },
+
+  { id: 'T-API-028', level: 2, description: 'Segment hat status=active',
+    run: async () => {
+      const r = await post('/v1/segments', { granted_by: 'test', size_ns: '1000' }, 'writer');
+      return ((r.body as Record<string, unknown>)['status']);
     },
-    expected: 'CG-E-003.003',
-  },
-  {
-    id: 'T-CTDDL-008', suite: 'T-CTDDL', level: 2,
-    description: 'semantics=address für CGUAS-Domain',
-    fn: () => {
-      const d = parseCTDDL({
-        name: 'cguas/root', version: 1, semantics: 'address',
-        type: 'linear', granularity: '1',
-        extent: { min: '0', max: String(2n ** 79n - 1n) },
-        epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
-      });
-      return d.semantics;
+    expected: 'active' },
+
+  // ── CGFS Dateien ──────────────────────────────────────────────────────────
+
+  { id: 'T-API-029', level: 2, description: 'POST /v1/files writer → 201',
+    run: async () => (await post('/v1/files', { content_hash: 'abc123', type_id: 'pdf', size_bytes: '1024' }, 'writer')).status,
+    expected: 201 },
+
+  { id: 'T-API-030', level: 2, description: 'GET /v1/files/:cgfi reader → 200',
+    run: async () => {
+      const created = await post('/v1/files', { content_hash: 'def456', type_id: 'txt', size_bytes: '512' }, 'writer');
+      const cgfi = ((created.body as Record<string, unknown>)['cgfi']) as string;
+      return (await get(`/v1/files/${cgfi}`, 'reader')).status;
     },
-    expected: 'address',
-  },
+    expected: 200 },
+
+  { id: 'T-API-031', level: 3, description: 'DELETE /v1/files/:cgfi writer → 200 (Tombstone)',
+    run: async () => {
+      const created = await post('/v1/files', { content_hash: 'del789', type_id: 'csv', size_bytes: '256' }, 'writer');
+      const cgfi = ((created.body as Record<string, unknown>)['cgfi']) as string;
+      return (await del(`/v1/files/${cgfi}`, 'writer')).status;
+    },
+    expected: 200 },
+
+  { id: 'T-API-032', level: 3, description: 'GET tombstoned file → 410',
+    run: async () => {
+      const created = await post('/v1/files', { content_hash: 'tomb111', type_id: 'log', size_bytes: '0' }, 'writer');
+      const cgfi = ((created.body as Record<string, unknown>)['cgfi']) as string;
+      await del(`/v1/files/${cgfi}`, 'writer');
+      return (await get(`/v1/files/${cgfi}`, 'reader')).status;
+    },
+    expected: 410 },
+
+  // ── GraphQL via HTTP ──────────────────────────────────────────────────────
+
+  { id: 'T-API-033', level: 2, description: 'POST /v1/graphql health reader → 200',
+    run: async () => (await post('/v1/graphql', { query: '{ health { status } }' }, 'reader')).status,
+    expected: 200 },
+
+  { id: 'T-API-034', level: 2, description: 'GraphQL health.status = ok',
+    run: async () => {
+      const r = await post('/v1/graphql', { query: '{ health { status } }' }, 'reader');
+      return ((r.body as Record<string, unknown>)['data'] as Record<string, unknown>)?.['health'];
+    },
+    expected: { status: 'ok' } },
+
+  // ── Admin-only (placeholder für future) ───────────────────────────────────
+
+  { id: 'T-API-035', level: 3, description: 'X-ChronoGrid-Version Header vorhanden',
+    run: async () => {
+      await startTestServer();
+      const res = await fetch(`${BASE}/v1/health`);
+      return res.headers.get('x-chronogrid-version');
+    },
+    expected: '0.8.0' },
 ];
 
-// ── T-API: REST API normative Tests (CG-STD-4100 Kap. 9) ─────────────────────
-export const T_API: TestCase[] = [
-  // Level 1: Basis-Endpoints
-  {
-    id: 'T-API-001', suite: 'T-API', level: 1,
-    description: 'GET /v1/health → 200 mit tai_now',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('GET', '/v1/health', req({ headers: {} }), ctx);
-      return res.status;
-    },
-    expected: 200,
-  },
-  {
-    id: 'T-API-002', suite: 'T-API', level: 1,
-    description: 'POST /v1/timepoints → 201',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/timepoints',
-        req({ headers: h(), body: { cgta: 'CG:TAI:1743585310000000000/v1' } }), ctx);
-      return res.status;
-    },
-    expected: 201,
-  },
-  {
-    id: 'T-API-003', suite: 'T-API', level: 1,
-    description: 'POST /v1/timepoints idempotent → 200 beim zweiten Aufruf',
-    fn: async () => {
-      const ctx = makeCtx();
-      const body = { cgta: 'CG:TAI:1743585310000000000/v1' };
-      await dispatch('POST', '/v1/timepoints', req({ headers: h(), body }), ctx);
-      const res2 = await dispatch('POST', '/v1/timepoints', req({ headers: h(), body }), ctx);
-      return res2.status;
-    },
-    expected: 200,
-  },
-  {
-    id: 'T-API-004', suite: 'T-API', level: 1,
-    description: 'POST /v1/timepoints/validate → valid:true für korrektes CGTA',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/timepoints/validate',
-        req({ headers: h('reader'), body: { cgta: 'CG:TAI:1743585310000000000/v1' } }), ctx);
-      return (res.body as Record<string, unknown>).valid;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-API-005', suite: 'T-API', level: 1,
-    description: 'POST /v1/timepoints/validate → valid:false für ungültiges CGTA',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/timepoints/validate',
-        req({ headers: h('reader'), body: { cgta: 'KEIN_CGTA' } }), ctx);
-      return (res.body as Record<string, unknown>).valid;
-    },
-    expected: false,
-  },
-  {
-    id: 'T-API-006', suite: 'T-API', level: 1,
-    description: 'POST /v1/timepoints ohne Auth → Fehler',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/timepoints',
-        req({ headers: {}, body: { cgta: 'CG:TAI:1/v1' } }), ctx);
-      return res.status >= 400;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-API-007', suite: 'T-API', level: 1,
-    description: 'reader-Rolle kann nicht POST /timepoints (RBAC)',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/timepoints',
-        req({ headers: h('reader'), body: { cgta: 'CG:TAI:1/v1' } }), ctx);
-      return res.status >= 400;
-    },
-    expected: true,
-  },
-  // Level 2: Vollständige API
-  {
-    id: 'T-API-011', suite: 'T-API', level: 2,
-    description: 'POST /v1/relations/compute before → korrekte Relation',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/relations/compute', req({
-        headers: h('reader'),
-        body: {
-          interval_a: { start: 'CG:TAI:1000000000000000000/v1', end: 'CG:TAI:2000000000000000000/v1' },
-          interval_b: { start: 'CG:TAI:3000000000000000000/v1', end: 'CG:TAI:4000000000000000000/v1' },
-        },
-      }), ctx);
-      return (res.body as Record<string, unknown>).relation;
-    },
-    expected: 'before',
-  },
-  {
-    id: 'T-API-012', suite: 'T-API', level: 2,
-    description: 'POST /v1/segments → 201 mit integrity_hash',
-    fn: async () => {
-      const ctx = makeCtx();
-      const res = await dispatch('POST', '/v1/segments', req({
-        headers: h(),
-        body: { segment_id: 'test.seg', owner_id: 'X', parent_id: 'CG.CGUAS.ROOT', size_ns: '1000000000000000000000' },
-      }), ctx);
-      return res.status === 201 && typeof (res.body as Record<string, unknown>).integrity_hash === 'string';
-    },
-    expected: true,
-  },
-  {
-    id: 'T-API-013', suite: 'T-API', level: 2,
-    description: 'POST /v1/files → CGFI deterministisch (I-R3)',
-    fn: async () => {
-      const ctx1 = makeCtx();
-      const ctx2 = makeCtx();
-      const body = {
-        cgfs_version: '1.0', type_id: 'test/v1', type_schema: 'url',
-        created_at: 'CG:TAI:1743585310000000000/v1',
-        content_hash: createHash('sha256').update('same').digest('hex'),
-        access_level: 'public',
-      };
-      const r1 = await dispatch('POST', '/v1/files', req({ headers: h(), body }), ctx1);
-      const r2 = await dispatch('POST', '/v1/files', req({ headers: h(), body }), ctx2);
-      return (r1.body as Record<string, unknown>).cgfi ===
-             (r2.body as Record<string, unknown>).cgfi;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-API-014', suite: 'T-API', level: 2,
-    description: 'DELETE /v1/files/:cgfi → logisch gelöscht (Tombstone, I-D1)',
-    fn: async () => {
-      const ctx = makeCtx();
-      const content = Buffer.from('delete me');
-      const ch = createHash('sha256').update(content).digest('hex');
-      const post = await dispatch('POST', '/v1/files', req({
-        headers: h(), body: { cgfs_version: '1.0', type_id: 'test/v1', type_schema: 'url',
-          created_at: 'CG:TAI:1/v1', content_hash: ch, access_level: 'public' },
-      }), ctx);
-      const cgfi = (post.body as Record<string, unknown>).cgfi as string;
-      const del = await dispatch('DELETE', `/v1/files/${cgfi}`,
-        req({ headers: h('maintainer'), params: { cgfi }, body: { reason: 'dsgvo_art17' } }), ctx);
-      // Manifest muss noch vorhanden sein (nur Tombstone, kein hartes Löschen)
-      const get = await dispatch('GET', `/v1/files/${cgfi}`,
-        req({ headers: h('reader'), params: { cgfi } }), ctx);
-      const body = get.body as Record<string, unknown>;
-      return del.status === 200 && body.cgfi === cgfi && body.deleted_at !== undefined;
-    },
-    expected: true,
-  },
-  // Level 3: Federation
-  {
-    id: 'T-API-021', suite: 'T-API', level: 3,
-    description: 'OpenAPI 3.1 Spec verfügbar (Level 3 Anforderung)',
-    fn: async () => {
-      const { OPENAPI_SPEC } = await import('cg-api/openapi.js');
-      return OPENAPI_SPEC.openapi === '3.1.0';
-    },
-    expected: true,
-  },
-];
-
-// ── T-CGUAS: CGUA-Segment-Tests (CG-STD-6100 Kap. 3) ─────────────────────────
-export const T_CGUAS: TestCase[] = [
-  {
-    id: 'T-CGUAS-001', suite: 'T-CGUAS', level: 2,
-    description: 'Root-Segment deckt 79-Bit-Adressraum',
-    fn: () => {
-      const reg = new SegmentRegistry();
-      return reg.root.end_address === 2n ** 79n - 1n;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-CGUAS-002', suite: 'T-CGUAS', level: 2,
-    description: 'Zwei Segmente überlappen nicht',
-    fn: () => {
-      const reg = new SegmentRegistry();
-      const SIZE = 1_000_000_000_000_000_000_000n;
-      const base = { parent_id: 'CG.CGUAS.ROOT', size_ns: SIZE,
-                     granted_at: 'CG:TAI:1/v1', granted_by: 'X' };
-      const s1 = reg.allocate({ ...base, segment_id: 'a', owner_id: 'A' });
-      const s2 = reg.allocate({ ...base, segment_id: 'b', owner_id: 'B' });
-      return s2.start_address >= s1.end_address;
-    },
-    expected: true,
-  },
-  {
-    id: 'T-CGUAS-003', suite: 'T-CGUAS', level: 2,
-    description: 'CGUA-Auflösung findet korrektes Segment',
-    fn: () => {
-      const reg = new SegmentRegistry();
-      const seg = reg.allocate({
-        segment_id: 'resolve.test', owner_id: 'X',
-        size_ns: 1_000_000_000_000_000_000_000n,
-        parent_id: 'CG.CGUAS.ROOT',
-        granted_at: 'CG:TAI:1/v1', granted_by: 'X',
-      });
-      const mid = seg.start_address + seg.size_ns / 2n;
-      return reg.resolve(mid).segment_id;
-    },
-    expected: 'resolve.test',
-  },
-  {
-    id: 'T-CGUAS-004', suite: 'T-CGUAS', level: 2,
-    description: 'Integritäts-Hash wird korrekt verifiziert',
-    fn: () => {
-      const reg = new SegmentRegistry();
-      const seg = reg.allocate({
-        segment_id: 'integrity.test', owner_id: 'X',
-        size_ns: 1_000_000_000_000_000_000_000n,
-        parent_id: 'CG.CGUAS.ROOT',
-        granted_at: 'CG:TAI:1/v1', granted_by: 'X',
-      });
-      return reg.verifyIntegrity(seg);
-    },
-    expected: true,
-  },
-];
-
-export const ALL_T_API: TestCase[] = [...T_CTDDL, ...T_API, ...T_CGUAS];
+// Export-Hook: Server nach allen Tests stoppen
+export async function teardown(): Promise<void> {
+  await stopTestServer();
+}

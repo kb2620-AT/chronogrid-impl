@@ -1,11 +1,1 @@
-{
-  "name": "cg-types",
-  "version": "1.0.0",
-  "type": "module",
-  "exports": {
-    ".":          { "import": "./src/index.ts" },
-    "./errors.js":{ "import": "./src/errors.ts" },
-    "./domain.js":{ "import": "./src/domain.ts" }
-  },
-  "scripts": { "build": "tsc --build" }
-}
+{"name":"cg-types","version":"1.0.0","type":"module","exports":{".":{"import":"./src/index.ts"},"./errors.js":{"import":"./src/errors.ts"},"./domain.js":{"import":"./src/domain.ts"}},"scripts":{"build":"tsc --build"}}
