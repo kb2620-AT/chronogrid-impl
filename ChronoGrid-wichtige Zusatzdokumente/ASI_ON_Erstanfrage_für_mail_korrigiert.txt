@@ -1,0 +1,56 @@
+AN: service@austrian-standards.at  
+BETREFF: Normungsantrag: ChronoGrid – formales Modell für deterministische Zeitadressierung (ISO TC 154)  
+
+---  
+
+Sehr geehrte Damen und Herren,  
+
+mein Name ist Kurt, ich bin Gründer und Lead Architect von ChronoGrid Systems mit Sitz in Neunkirchen, Niederösterreich.  
+
+Ich möchte einen Normungsantrag bei Austrian Standards International einbringen und bitte um Kontaktaufnahme mit der zuständigen Komitee-Managerin bzw. dem zuständigen Komitee-Manager.  
+
+
+Zum Projekt:  
+
+ChronoGrid ist ein formales Modell für deterministische, domänenübergreifende Zeitadressierung in Computersystemen. Das Projekt adressiert ein weitverbreitetes Interoperabilitätsproblem: ISO 8601, POSIX time_t, TAI, UTC und GPS-Zeit sind ohne explizite Konvertierung nicht interoperabel – mit realen Folgekosten in Flugsicherung, Energiewirtschaft, Rechtswesen und Langzeitarchivierung.  
+
+Kernbeiträge:  
+– CGTA (ChronoGrid Time Address): global eindeutige, unveränderliche Zeitadresse auf Basis ganzzahliger Arithmetik (ℤ∞)  
+– CTDDL (ChronoGrid Time Domain Definition Language): maschinenlesbare formale Beschreibung beliebiger Zeitdomänen  
+– Deterministische Mapping-Taxonomie mit Schaltsekunden-Semantik  
+– 19-Dokumente-Spezifikationsstack (CG-STD-0000 bis CG-STD-6100, CG-ORG-2100, CG-APP-0100 bis CG-APP-0910)  
+
+
+Aktueller Stand:  
+
+Die Referenzimplementierung (TypeScript/Node.js/PostgreSQL) ist abgeschlossen und trägt ein formales Konformitätszertifikat: Level 1: 55/55 Tests bestanden, Level 3: 72/72 normative Tests bestanden, KONFORM (April 2026). Ein akademisches Paper wurde für die OCG-Jahrestagung 2026 eingereicht. Ein FFG-Basisprogramm-Förderantrag für formale Verifikation und Open-Source-Veröffentlichung ist in Vorbereitung.  
+
+
+Angestrebter Normungspfad:  
+
+ÖNORM-Vorprojekt (Austrian Standards) → CEN → ISO TC 154 (Processes, data elements and documents)  
+
+ISO TC 154 ist das zuständige Komitee, da ChronoGrid Datums- und Zeitdarstellung sowie Zeitarithmetik für EDI und branchenübergreifende Systeme standardisiert – thematisch direkt im Scope von TC 154.  
+
+
+Ich bitte um:  
+1. Benennung der zuständigen Komitee-Managerin bzw. des zuständigen Komitee-Managers  
+2. Informationen zum formalen Ablauf eines ÖNORM-Vorprojekts  
+3. Einen Gesprächstermin zur Erstbesprechung  
+
+Als Unterlagen stehen bereit: vollständiger Spezifikationsstack (19 Dokumente), Konformitätszertifikat der Referenzimplementierung sowie ein akademisches Paper (OCG-Jahrestagung 2026).  
+
+Ich freue mich auf Ihre Rückmeldung.  
+
+Mit freundlichen Grüßen  
+
+Kurt  
+Gründer & Lead Architect  
+ChronoGrid Systems  
+Neunkirchen, Niederösterreich  
+kontakt@chronogrid.org  
+
+---  
+Erstellt: 20.04.2026 | Aktualisiert: 26.04.2026  
+Versandbereit an: service@austrian-standards.at  
+Beilagen empfohlen: conformance-report.json, CG-Dokumentenuebersicht_v26.docx, ChronoGrid_OCG_Paper_v04.docx  
