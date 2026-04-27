@@ -1,0 +1,136 @@
+{
+  "platform": {
+    "node": "v25.9.0",
+    "os": "win32",
+    "arch": "x64"
+  },
+  "date": "2026-04-22T16:18:40.767Z",
+  "results": {
+    "bigint_add": {
+      "label": "BigInt Add (a + b)",
+      "iterations": 1000000,
+      "totalMs": 26.779,
+      "perOpNs": 26.8,
+      "opsPerSec": 37342136
+    },
+    "bigint_sub": {
+      "label": "BigInt Sub (a - b)",
+      "iterations": 1000000,
+      "totalMs": 35.565,
+      "perOpNs": 35.6,
+      "opsPerSec": 28117927
+    },
+    "bigint_mul": {
+      "label": "BigInt Mul (a * b)",
+      "iterations": 1000000,
+      "totalMs": 29.433,
+      "perOpNs": 29.4,
+      "opsPerSec": 33975008
+    },
+    "bigint_div": {
+      "label": "BigInt Div (a / b)",
+      "iterations": 1000000,
+      "totalMs": 30.252,
+      "perOpNs": 30.3,
+      "opsPerSec": 33055447
+    },
+    "bigint_mod": {
+      "label": "BigInt Mod (a % b)",
+      "iterations": 1000000,
+      "totalMs": 30.755,
+      "perOpNs": 30.8,
+      "opsPerSec": 32515038
+    },
+    "bigint_abs": {
+      "label": "BigInt Abs (|a|)",
+      "iterations": 1000000,
+      "totalMs": 49.293,
+      "perOpNs": 49.3,
+      "opsPerSec": 20286897
+    },
+    "bigint_neg": {
+      "label": "BigInt Neg (-a)",
+      "iterations": 1000000,
+      "totalMs": 30.871,
+      "perOpNs": 30.9,
+      "opsPerSec": 32392756
+    },
+    "bigint_cmp": {
+      "label": "BigInt Cmp (a <= b)",
+      "iterations": 1000000,
+      "totalMs": 48.08,
+      "perOpNs": 48.1,
+      "opsPerSec": 20798842
+    },
+    "bigint_pow": {
+      "label": "BigInt Pow (b ** 8n)",
+      "iterations": 1000000,
+      "totalMs": 192.237,
+      "perOpNs": 192.2,
+      "opsPerSec": 5201915
+    },
+    "encode_tai": {
+      "label": "encode TAI",
+      "iterations": 10000,
+      "totalMs": 1.744,
+      "perOpNs": 174.4,
+      "opsPerSec": 5732959
+    },
+    "encode_gps": {
+      "label": "encode GPS",
+      "iterations": 10000,
+      "totalMs": 1.233,
+      "perOpNs": 123.3,
+      "opsPerSec": 8109642
+    },
+    "encode_unix": {
+      "label": "encode Unix",
+      "iterations": 10000,
+      "totalMs": 1.391,
+      "perOpNs": 139.1,
+      "opsPerSec": 7187006
+    },
+    "decode_tai": {
+      "label": "decode TAI",
+      "iterations": 10000,
+      "totalMs": 5.89,
+      "perOpNs": 589,
+      "opsPerSec": 1697879
+    },
+    "decode_gps": {
+      "label": "decode GPS",
+      "iterations": 10000,
+      "totalMs": 6.023,
+      "perOpNs": 602.3,
+      "opsPerSec": 1660192
+    },
+    "machineid": {
+      "label": "MachineID SHA-256",
+      "iterations": 10000,
+      "totalMs": 41.626,
+      "perOpNs": 4162.6,
+      "opsPerSec": 240234
+    },
+    "convert": {
+      "label": "convert TAI→GPS",
+      "iterations": 10000,
+      "totalMs": 7.609,
+      "perOpNs": 760.9,
+      "opsPerSec": 1314164
+    },
+    "full_timepoint": {
+      "label": "Full Timepoint",
+      "iterations": 10000,
+      "totalMs": 47.635,
+      "perOpNs": 4763.5,
+      "opsPerSec": 209931
+    }
+  },
+  "memory": {
+    "rssM": 47.7,
+    "heapUsedM": 5.1
+  },
+  "testvectors": {
+    "pass": true
+  }
+}
