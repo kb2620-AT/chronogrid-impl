@@ -1,0 +1,1508 @@
+# =============================================================================
+# ChronoGrid API Test Suite — Anlage C zu CG-STD-4100 v0.7
+# =============================================================================
+# Normative Test-Suite für die ChronoGrid REST API (Kap. 4) und GraphQL API
+# (Kap. 5). Alle Tests sind Pflicht für das jeweilige Konformitätslevel.
+#
+# Format: YAML — maschinenlesbar durch cg-testkit (CG-APP-0700, Package 4.7)
+# CLI:    npx cg-testkit --suite T-API --level 2 --output report.json
+#
+# Referenzen:
+#   CG-STD-4100 v0.7    — Storage & API Spezifikation (normativ)
+#   openapi.yaml        — Anlage A (normative Schnittstellendefinition)
+#   schema.graphql      — Anlage B (normatives GraphQL SDL)
+#   CG-STD-5100 v1.3    — Governance & Zertifizierung
+#   CG-STD-3100 v1.5    — Engine (Testvektoren für MachineID, CGFI)
+#
+# Konformitätslevel:
+#   Level 1 (55 Tests): T-L1-* aus CG-STD-3100, PLUS T-API-001 bis T-API-015
+#   Level 2 (155 Tests): Level 1 PLUS T-API-016 bis T-API-045
+#   Level 3 (304+ Tests): Level 2 PLUS T-API-046 bis T-API-060, T-ENG-*, T-CGUAS-*, T-CGFS-*
+#
+# Fehlerklassen: CG-E-001 bis CG-E-011 (CG-STD-2100 + CG-STD-4100 Kap. 11)
+# Invarianten:  I-R3 (Determinismus), I-D1 (Domain-Unveränderlichkeit),
+#               I-S1 (Zeitpunkt-Immutabilität), I-SEG-1 (Segment-Isolation)
+# =============================================================================
+
+meta:
+  suite_id:     "T-API"
+  title:        "ChronoGrid API Conformance Test Suite"
+  doc_ref:      "CG-STD-4100 v0.7 Anlage C"
+  version:      "0.7"
+  status:       "DRAFT"
+  date:         "April 2026"
+  total_tests:  60
+  level_1:      15   # T-API-001 bis T-API-015
+  level_2:      30   # T-API-016 bis T-API-045
+  level_3:      15   # T-API-046 bis T-API-060
+
+# Gemeinsam genutzte Testvektoren (deterministisch, I-R3)
+fixtures:
+  tai_domain_v1: "TAI/v1"
+  gregorian_v2:  "Gregorian/v2"
+
+  # Kanonischer TAI-Testzeitpunkt (2025-03-15T09:52:17 TAI)
+  tai_value_1:         "1741859537000000000"
+  tai_cgta_1:          "CG:TAI:1741859537000000000/v1"
+  tai_machine_id_1:    "b4f9a2c1d3e5f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
+
+  # Zweiter Testzeitpunkt (offset +1s)
+  tai_value_2:         "1741859538000000000"
+  tai_cgta_2:          "CG:TAI:1741859538000000000/v1"
+  tai_machine_id_2:    "c5f8b3d2e4f6a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4"
+
+  # Gregorianischer Testzeitpunkt (identisch nach Konvertierung)
+  greg_cgta_1:         "CG:Gregorian:2025-03-15T09:52:17Z/v2"
+
+  # Invalide Testvektoren
+  invalid_cgta_no_prefix:    "TAI:1741859537000000000/v1"
+  invalid_cgta_float:        "CG:TAI:1741859537.5/v1"
+  invalid_cgta_no_version:   "CG:TAI:1741859537000000000"
+  invalid_cgta_negative_ver: "CG:TAI:1741859537000000000/v0"
+
+  # CTDDL Test-Domain (minimal valide, linear)
+  test_domain_ctddl: |
+    {
+      "name": "TestLinear",
+      "version": "1.0",
+      "semantics": "time",
+      "type": "linear",
+      "granularity": "nanosecond",
+      "extent": { "min": "0", "max": "99999999999999999999", "inclusive": true },
+      "hierarchy": [{ "unit": "nanosecond", "factor": 1 }],
+      "format": { "type": "integer" },
+      "metadata": { "stability": "permanent" }
+    }
+
+  # CGFI Test-Vektor
+  test_file_content_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+  test_cgfi:              "d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6"
+
+
+# =============================================================================
+# LEVEL 1 — T-API-001 bis T-API-015
+# Pflicht für Level-1-Konformität (CG-STD-5100 §4.1)
+# =============================================================================
+
+tests:
+
+  # ── HEALTH / SYSTEM ────────────────────────────────────────────────────────
+
+  - id: T-API-001
+    level: 1
+    group: system
+    title: "Health-Endpoint erreichbar und korrekt strukturiert"
+    description: >
+      GET /v1/health muss ohne Authentifizierung erreichbar sein und
+      ein strukturiertes Health-Objekt zurückliefern (CG-STD-4100 Kap. 4.5).
+    request:
+      method: GET
+      path: /v1/health
+      auth: none
+    expect:
+      status: 200
+      body:
+        status: { enum: [ok, degraded] }
+        version: { type: string, minLength: 1 }
+        conformance_level: { type: integer, minimum: 1, maximum: 3 }
+        engine_version: { type: string, minLength: 1 }
+        timestamp: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.5"
+
+  - id: T-API-002
+    level: 1
+    group: system
+    title: "Health-Endpoint gibt conformance_level >= 1 zurück"
+    description: >
+      Der conformance_level muss dem tatsächlich erreichten Level entsprechen.
+      Eine Level-1-Implementierung darf nicht Level 2 oder 3 behaupten ohne
+      die entsprechenden Tests bestanden zu haben.
+    request:
+      method: GET
+      path: /v1/health
+      auth: none
+    expect:
+      status: 200
+      body:
+        conformance_level: { minimum: 1 }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 9, CG-STD-5100 §4.1"
+
+  # ── AUTH / JWT ─────────────────────────────────────────────────────────────
+
+  - id: T-API-003
+    level: 1
+    group: auth
+    title: "Token-Endpoint: Client-Credentials-Flow erfolgreich"
+    description: >
+      POST /v1/auth/token mit grant_type=client_credentials muss ein
+      gültiges JWT zurückliefern (RS256 oder ES256, kein HS256).
+    request:
+      method: POST
+      path: /v1/auth/token
+      auth: none
+      body:
+        grant_type: client_credentials
+        client_id: "{TEST_CLIENT_ID}"
+        client_secret: "{TEST_CLIENT_SECRET}"
+      content_type: application/x-www-form-urlencoded
+    expect:
+      status: 200
+      body:
+        access_token: { type: string, minLength: 50 }
+        token_type: { const: Bearer }
+        expires_in: { type: integer, minimum: 1, maximum: 3600 }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.1, 7.2"
+    note: "TEST_CLIENT_ID und TEST_CLIENT_SECRET werden vom Testkit als Umgebungsvariablen übergeben"
+
+  - id: T-API-004
+    level: 1
+    group: auth
+    title: "Anfrage ohne JWT wird mit 401 abgewiesen"
+    description: >
+      GET /v1/timepoints ohne Authorization-Header muss 401 zurückgeben.
+    request:
+      method: GET
+      path: /v1/timepoints
+      auth: none
+    expect:
+      status: 401
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-009" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.1"
+
+  - id: T-API-005
+    level: 1
+    group: auth
+    title: "JWKS-Endpoint gibt gültiges JWKS-Dokument zurück"
+    description: >
+      GET /v1/auth/jwks.json muss ohne Auth erreichbar sein und
+      mindestens einen öffentlichen Schlüssel enthalten (RFC 7517).
+    request:
+      method: GET
+      path: /v1/auth/jwks.json
+      auth: none
+    expect:
+      status: 200
+      body:
+        keys: { type: array, minItems: 1 }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.4, RFC 7517"
+
+  # ── TIMEPOINTS — SPEICHERN / ABRUFEN ──────────────────────────────────────
+
+  - id: T-API-006
+    level: 1
+    group: timepoints
+    title: "Zeitpunkt speichern: 201 Created mit korrekter MachineID"
+    description: >
+      POST /v1/timepoints mit gültigem CGTA und Domain muss 201 zurückgeben.
+      Die zurückgegebene machine_id muss SHA-256(DomainName ‖ AbsoluterWert ‖ Version)
+      entsprechen (I-R3, deterministisch).
+    request:
+      method: POST
+      path: /v1/timepoints
+      auth: bearer
+      role: contributor
+      body:
+        cgta: "{tai_cgta_1}"
+        domain: TAI
+        value: "{tai_value_1}"
+        version: 1
+    expect:
+      status: 201
+      body:
+        machine_id: { const: "{tai_machine_id_1}" }
+        cgta: { const: "{tai_cgta_1}" }
+        domain: { const: TAI }
+        value: { const: "{tai_value_1}" }
+        version: { const: 1 }
+        created_at: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.2.1, CG-STD-3100 §5.1"
+
+  - id: T-API-007
+    level: 1
+    group: timepoints
+    title: "Zeitpunkt abrufen per MachineID: 200 OK"
+    description: >
+      GET /v1/timepoints/{machine_id} muss den zuvor gespeicherten Zeitpunkt
+      identisch zurückliefern (Determinismus I-R3, Immutabilität I-S1).
+    precondition: T-API-006
+    request:
+      method: GET
+      path: "/v1/timepoints/{tai_machine_id_1}"
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        machine_id: { const: "{tai_machine_id_1}" }
+        cgta: { const: "{tai_cgta_1}" }
+        value: { const: "{tai_value_1}" }
+    invariants: [I-R3, I-S1]
+    normref: "CG-STD-4100 Kap. 4.2.2"
+
+  - id: T-API-008
+    level: 1
+    group: timepoints
+    title: "Idempotenz: zweimaliges Speichern liefert 200 (kein Fehler)"
+    description: >
+      POST /v1/timepoints mit derselben MachineID muss 200 (nicht 409) zurückgeben
+      und den bestehenden Eintrag zurückliefern. I-S1: kein Überschreiben.
+    precondition: T-API-006
+    request:
+      method: POST
+      path: /v1/timepoints
+      auth: bearer
+      role: contributor
+      body:
+        cgta: "{tai_cgta_1}"
+        domain: TAI
+        value: "{tai_value_1}"
+        version: 1
+    expect:
+      status: 200
+      body:
+        machine_id: { const: "{tai_machine_id_1}" }
+    invariants: [I-S1, I-R3]
+    normref: "CG-STD-4100 Kap. 4.2.1 (Idempotenz)"
+
+  - id: T-API-009
+    level: 1
+    group: timepoints
+    title: "Ungültiger CGTA-String: 400 CG-E-001"
+    description: >
+      POST /v1/timepoints mit syntaktisch ungültigem CGTA muss
+      400 mit CG-E-001.* zurückgeben.
+    request:
+      method: POST
+      path: /v1/timepoints
+      auth: bearer
+      role: contributor
+      body:
+        cgta: "{invalid_cgta_no_prefix}"
+        domain: TAI
+        value: "{tai_value_1}"
+        version: 1
+    expect:
+      status: 400
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-001" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.1, CG-STD-2100 §5 CG-E-001"
+
+  - id: T-API-010
+    level: 1
+    group: timepoints
+    title: "Float im CGTA-Zeitwert: 400 CG-E-001"
+    description: >
+      CGTA-Zeitwerte müssen Ganzzahlen (BigInt) sein. Dezimalpunkte sind
+      syntaktisch ungültig (ABNF-Verletzung → CG-E-001).
+    request:
+      method: POST
+      path: /v1/timepoints
+      auth: bearer
+      role: contributor
+      body:
+        cgta: "{invalid_cgta_float}"
+        domain: TAI
+        value: "1741859537500000000"
+        version: 1
+    expect:
+      status: 400
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-001" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.1, CG-STD-0000 §1.2 (ℤ∞)"
+
+  - id: T-API-011
+    level: 1
+    group: timepoints
+    title: "Unbekannte MachineID: 404 Not Found"
+    description: >
+      GET /v1/timepoints/{unknown_id} für nicht existierende MachineID
+      muss 404 zurückgeben.
+    request:
+      method: GET
+      path: "/v1/timepoints/0000000000000000000000000000000000000000000000000000000000000000"
+      auth: bearer
+      role: reader
+    expect:
+      status: 404
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-009" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.2"
+
+  # ── KONVERTIERUNG / VALIDIERUNG ────────────────────────────────────────────
+
+  - id: T-API-012
+    level: 1
+    group: timepoints
+    title: "Validierung: gültiger CGTA → valid: true"
+    description: >
+      POST /v1/timepoints/validate mit gültigem CGTA muss
+      valid: true und die korrekte machine_id zurückgeben.
+    request:
+      method: POST
+      path: /v1/timepoints/validate
+      auth: bearer
+      role: reader
+      body:
+        cgta: "{tai_cgta_1}"
+    expect:
+      status: 200
+      body:
+        valid: { const: true }
+        machine_id: { const: "{tai_machine_id_1}" }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.2.4"
+
+  - id: T-API-013
+    level: 1
+    group: timepoints
+    title: "Validierung: ungültiger CGTA → valid: false mit CG-E-001"
+    description: >
+      POST /v1/timepoints/validate mit syntaktisch ungültigem CGTA
+      muss valid: false und einen CG-E-001-Fehler zurückgeben.
+    request:
+      method: POST
+      path: /v1/timepoints/validate
+      auth: bearer
+      role: reader
+      body:
+        cgta: "{invalid_cgta_no_version}"
+    expect:
+      status: 200
+      body:
+        valid: { const: false }
+        error:
+          cg_code: { pattern: "^CG-E-001" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.4"
+
+  - id: T-API-014
+    level: 1
+    group: timepoints
+    title: "Konvertierung TAI → Gregorian: korrekte Ziel-CGTA"
+    description: >
+      POST /v1/timepoints/convert muss bei bekanntem Mapping eine korrekte
+      Ziel-CGTA zurückgeben. Mapping-Klasse A, Chain-Länge 1.
+      Rückkonvertierung muss identischen Ausgangswert liefern (I-R3).
+    request:
+      method: POST
+      path: /v1/timepoints/convert
+      auth: bearer
+      role: reader
+      body:
+        cgta: "{tai_cgta_1}"
+        target_domain: "Gregorian/v2"
+    expect:
+      status: 200
+      body:
+        target_cgta: { const: "{greg_cgta_1}" }
+        mapping_class: { const: A }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.2.3, CG-STD-3100 §4"
+
+  - id: T-API-015
+    level: 1
+    group: timepoints
+    title: "Konvertierung: unbekannte Ziel-Domain → 422 CG-E-002 oder CG-E-007"
+    description: >
+      POST /v1/timepoints/convert mit nicht registrierter Ziel-Domain
+      muss 422 mit CG-E-002 (SemanticError) oder CG-E-007 (VersionError)
+      zurückgeben.
+    request:
+      method: POST
+      path: /v1/timepoints/convert
+      auth: bearer
+      role: reader
+      body:
+        cgta: "{tai_cgta_1}"
+        target_domain: "NonExistentDomain/v99"
+    expect:
+      status: 422
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-00[27]" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.3"
+
+
+# =============================================================================
+# LEVEL 2 — T-API-016 bis T-API-045
+# Pflicht für Level-2-Konformität (CG-STD-5100 §4.2)
+# =============================================================================
+
+  # ── DOMAIN-REGISTRY ────────────────────────────────────────────────────────
+
+  - id: T-API-016
+    level: 2
+    group: domains
+    title: "Domain-Registry: Liste abrufbar"
+    description: >
+      GET /v1/domains muss eine paginierte Liste registrierter Domains
+      mit korrekten Feldern zurückgeben.
+    request:
+      method: GET
+      path: /v1/domains
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        data: { type: array }
+        total: { type: integer, minimum: 0 }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.3"
+
+  - id: T-API-017
+    level: 2
+    group: domains
+    title: "Domain einreichen: 202 Accepted (Draft erstellt)"
+    description: >
+      POST /v1/domains mit gültigem CTDDL-JSON muss 202 zurückgeben
+      und status: draft setzen. Noch nicht publiziert (I-D1).
+    request:
+      method: POST
+      path: /v1/domains
+      auth: bearer
+      role: contributor
+      body:
+        name: TestLinear
+        version: 1
+        ctddl: "{test_domain_ctddl}"
+    expect:
+      status: 202
+      body:
+        status: { const: draft }
+        name: { const: TestLinear }
+        integrity_hash: { type: string, minLength: 64 }
+    invariants: [I-D1]
+    normref: "CG-STD-4100 Kap. 4.3, CIP-D"
+
+  - id: T-API-018
+    level: 2
+    group: domains
+    title: "Domain abrufen per domain_id"
+    description: >
+      GET /v1/domains/{domain_id} muss die CTDDL-Definition zurückgeben.
+    precondition: T-API-017
+    request:
+      method: GET
+      path: /v1/domains/TestLinear/v1
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        domain_id: { const: "TestLinear/v1" }
+        ctddl: { type: object }
+        integrity_hash: { type: string }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.3"
+
+  - id: T-API-019
+    level: 2
+    group: domains
+    title: "Domain publizieren: status wechselt zu published"
+    description: >
+      POST /v1/domains/{domain_id}/publish muss status auf published setzen.
+      Nach Publikation ist die Domain unveränderlich (I-D1).
+    precondition: T-API-017
+    request:
+      method: POST
+      path: /v1/domains/TestLinear/v1/publish
+      auth: bearer
+      role: tsc
+    expect:
+      status: 200
+      body:
+        status: { const: published }
+        published_at: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+    invariants: [I-D1]
+    normref: "CG-STD-4100 Kap. 4.3, I-D1 (Th. 2.1)"
+
+  - id: T-API-020
+    level: 2
+    group: domains
+    title: "I-D1: publizierte Domain kann nicht überschrieben werden"
+    description: >
+      POST /v1/domains mit identischer domain_id und version einer
+      bereits publizierten Domain muss 409 Conflict zurückgeben.
+      Verletzung von I-D1 → CG-E-009 (ImmutabilityError).
+    precondition: T-API-019
+    request:
+      method: POST
+      path: /v1/domains
+      auth: bearer
+      role: contributor
+      body:
+        name: TestLinear
+        version: 1
+        ctddl: "{test_domain_ctddl}"
+    expect:
+      status: 409
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-009" }
+    invariants: [I-D1]
+    normref: "CG-STD-4100 Kap. 4.3, CG-STD-2100 CG-E-009"
+
+  - id: T-API-021
+    level: 2
+    group: domains
+    title: "Ungültiges CTDDL: 400 CG-E-001"
+    description: >
+      POST /v1/domains mit syntaktisch ungültigem CTDDL-JSON
+      muss 400 mit CG-E-001 zurückgeben.
+    request:
+      method: POST
+      path: /v1/domains
+      auth: bearer
+      role: contributor
+      body:
+        name: BadDomain
+        version: 1
+        ctddl: "{ invalid json }"
+    expect:
+      status: 400
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-001" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.3, CG-STD-2100 §5"
+
+  # ── TIMEPOINTS — LISTEN / PAGINIERUNG ─────────────────────────────────────
+
+  - id: T-API-022
+    level: 2
+    group: timepoints
+    title: "Zeitpunkt-Liste mit Domain-Filter"
+    description: >
+      GET /v1/timepoints?domain=TAI/v1 muss nur Zeitpunkte der
+      TAI-Domain zurückgeben. Alle zurückgegebenen Einträge müssen
+      domain = TAI enthalten.
+    precondition: T-API-006
+    request:
+      method: GET
+      path: /v1/timepoints
+      auth: bearer
+      role: reader
+      params:
+        domain: "TAI/v1"
+        limit: 10
+    expect:
+      status: 200
+      body:
+        data:
+          type: array
+          items:
+            properties:
+              domain: { const: TAI }
+        pagination:
+          has_more: { type: boolean }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.5"
+
+  - id: T-API-023
+    level: 2
+    group: timepoints
+    title: "Zeitpunkt-Liste: Paginierung mit next_cursor"
+    description: >
+      Wenn has_more: true, muss next_cursor gesetzt sein und beim
+      nächsten Request die nächste Seite liefern (keine Duplikate).
+    precondition: T-API-006
+    request:
+      method: GET
+      path: /v1/timepoints
+      auth: bearer
+      role: reader
+      params:
+        limit: 1
+    expect:
+      status: 200
+      body:
+        pagination:
+          has_more: { type: boolean }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2.5"
+
+  - id: T-API-024
+    level: 2
+    group: timepoints
+    title: "Batch-Speicherung: 207 Multi-Status"
+    description: >
+      POST /v1/timepoints/batch mit <= 1000 Zeitpunkten muss
+      207 zurückgeben. Jeder Eintrag hat status 201, 200 oder 422.
+    request:
+      method: POST
+      path: /v1/timepoints/batch
+      auth: bearer
+      role: contributor
+      body:
+        timepoints:
+          - cgta: "{tai_cgta_1}"
+            domain: TAI
+            value: "{tai_value_1}"
+            version: 1
+          - cgta: "{tai_cgta_2}"
+            domain: TAI
+            value: "{tai_value_2}"
+            version: 1
+    expect:
+      status: 207
+      body:
+        results:
+          type: array
+          minItems: 2
+          items:
+            properties:
+              status: { enum: [200, 201, 422] }
+    invariants: [I-S1, I-R3]
+    normref: "CG-STD-4100 Kap. 4.2 (OP-05)"
+
+  - id: T-API-025
+    level: 2
+    group: timepoints
+    title: "Batch: Überschreitung 1000 Einträge → CG-E-009.003"
+    description: >
+      POST /v1/timepoints/batch mit > 1000 Einträgen muss
+      400 mit CG-E-009.003 zurückgeben.
+    request:
+      method: POST
+      path: /v1/timepoints/batch
+      auth: bearer
+      role: contributor
+      body:
+        timepoints: "{GENERATE_1001_TIMEPOINTS}"
+    expect:
+      status: 400
+      body:
+        error:
+          cg_code: { const: "CG-E-009.003" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.2 (OP-05)"
+    note: "cg-testkit generiert 1001 syntaktisch valide Zeitpunkte für diesen Test"
+
+  # ── RELATIONEN / ALLEN'S ALGEBRA ───────────────────────────────────────────
+
+  - id: T-API-026
+    level: 2
+    group: relations
+    title: "Allen-Relation berechnen: PRECEDES"
+    description: >
+      POST /v1/relations/compute mit zwei nicht-überlappenden Intervallen
+      muss relation: PRECEDES zurückgeben.
+    request:
+      method: POST
+      path: /v1/relations/compute
+      auth: bearer
+      role: reader
+      body:
+        interval_a:
+          start: "CG:TAI:1000000000/v1"
+          end:   "CG:TAI:2000000000/v1"
+        interval_b:
+          start: "CG:TAI:3000000000/v1"
+          end:   "CG:TAI:4000000000/v1"
+    expect:
+      status: 200
+      body:
+        relation: { const: precedes }
+        symbol: { type: string, minLength: 1 }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.4, Allen (1983)"
+
+  - id: T-API-027
+    level: 2
+    group: relations
+    title: "Allen-Relation: EQUALS für identische Intervalle"
+    request:
+      method: POST
+      path: /v1/relations/compute
+      auth: bearer
+      role: reader
+      body:
+        interval_a:
+          start: "{tai_cgta_1}"
+          end:   "{tai_cgta_2}"
+        interval_b:
+          start: "{tai_cgta_1}"
+          end:   "{tai_cgta_2}"
+    expect:
+      status: 200
+      body:
+        relation: { const: equals }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.4"
+
+  - id: T-API-028
+    level: 2
+    group: relations
+    title: "Relation persistieren und abrufen"
+    description: >
+      POST /v1/relations muss die Relation speichern und eine relation_id
+      vergeben. GET /v1/relations/{id} muss dieselbe Relation zurückgeben.
+    request:
+      method: POST
+      path: /v1/relations
+      auth: bearer
+      role: contributor
+      body:
+        interval_a:
+          start: "CG:TAI:1000000000/v1"
+          end:   "CG:TAI:2000000000/v1"
+        interval_b:
+          start: "CG:TAI:3000000000/v1"
+          end:   "CG:TAI:4000000000/v1"
+    expect:
+      status: 201
+      body:
+        relation_id: { type: string, minLength: 1 }
+        relation: { const: precedes }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.4"
+
+  # ── RBAC ──────────────────────────────────────────────────────────────────
+
+  - id: T-API-029
+    level: 2
+    group: auth
+    title: "RBAC: Reader kann nicht schreiben (403 Forbidden)"
+    description: >
+      POST /v1/timepoints mit Reader-JWT muss 403 Forbidden zurückgeben.
+      RBAC: Contributor-Rolle oder höher erforderlich.
+    request:
+      method: POST
+      path: /v1/timepoints
+      auth: bearer
+      role: reader
+      body:
+        cgta: "{tai_cgta_2}"
+        domain: TAI
+        value: "{tai_value_2}"
+        version: 1
+    expect:
+      status: 403
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-009" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.3"
+
+  - id: T-API-030
+    level: 2
+    group: auth
+    title: "RBAC: Contributor kann nicht publizieren (403 Forbidden)"
+    description: >
+      POST /v1/domains/{id}/publish mit Contributor-JWT muss 403 zurückgeben.
+      Nur TSC-Rolle kann Domains freigeben.
+    precondition: T-API-017
+    request:
+      method: POST
+      path: /v1/domains/TestLinear/v1/publish
+      auth: bearer
+      role: contributor
+    expect:
+      status: 403
+    invariants: [I-D1]
+    normref: "CG-STD-4100 Kap. 7.3, CG-ORG-2100"
+
+  - id: T-API-031
+    level: 2
+    group: auth
+    title: "Token-Refresh: neues JWT erhalten"
+    request:
+      method: POST
+      path: /v1/auth/refresh
+      auth: none
+      body:
+        refresh_token: "{VALID_REFRESH_TOKEN}"
+    expect:
+      status: 200
+      body:
+        access_token: { type: string }
+        token_type: { const: Bearer }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.4"
+
+  - id: T-API-032
+    level: 2
+    group: auth
+    title: "Token-Revoke: widerrufenes Token wird abgelehnt"
+    description: >
+      Nach POST /v1/auth/revoke muss das Token ungültig sein.
+      Nachfolgende Anfragen mit diesem Token müssen 401 zurückgeben.
+    request:
+      method: POST
+      path: /v1/auth/revoke
+      auth: bearer
+      role: reader
+      body:
+        token: "{CURRENT_TOKEN}"
+        token_type_hint: access_token
+    expect:
+      status: 200
+    followup:
+      request:
+        method: GET
+        path: /v1/timepoints
+        auth: revoked_token
+      expect:
+        status: 401
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.4"
+
+  # ── GRAPHQL API ────────────────────────────────────────────────────────────
+
+  - id: T-API-033
+    level: 2
+    group: graphql
+    title: "GraphQL: health Query erreichbar"
+    request:
+      method: POST
+      path: /v1/graphql
+      auth: none
+      body:
+        query: "{ health { status conformance_level timestamp } }"
+    expect:
+      status: 200
+      body:
+        data:
+          health:
+            status: { enum: [ok, degraded] }
+            conformance_level: { minimum: 1 }
+            timestamp: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+        errors: { absent: true }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 5.3, schema.graphql Query.health"
+
+  - id: T-API-034
+    level: 2
+    group: graphql
+    title: "GraphQL: Zeitpunkt per MachineID abrufen"
+    precondition: T-API-006
+    request:
+      method: POST
+      path: /v1/graphql
+      auth: bearer
+      role: reader
+      body:
+        query: |
+          query GetTP($mid: Hash!) {
+            timepoint(machine_id: $mid) {
+              machine_id cgta absolute_value
+              domain { domain_id }
+            }
+          }
+        variables:
+          mid: "{tai_machine_id_1}"
+    expect:
+      status: 200
+      body:
+        data:
+          timepoint:
+            machine_id: { const: "{tai_machine_id_1}" }
+            cgta: { const: "{tai_cgta_1}" }
+            absolute_value: { const: "{tai_value_1}" }
+        errors: { absent: true }
+    invariants: [I-R3, I-S1]
+    normref: "CG-STD-4100 Kap. 5.3"
+
+  - id: T-API-035
+    level: 2
+    group: graphql
+    title: "GraphQL: Zeitpunkt speichern via saveTimepoint Mutation"
+    request:
+      method: POST
+      path: /v1/graphql
+      auth: bearer
+      role: contributor
+      body:
+        query: |
+          mutation Save($input: SaveTimepointInput!) {
+            saveTimepoint(input: $input) {
+              machine_id cgta created_at
+            }
+          }
+        variables:
+          input:
+            cgta: "{tai_cgta_2}"
+    expect:
+      status: 200
+      body:
+        data:
+          saveTimepoint:
+            machine_id: { const: "{tai_machine_id_2}" }
+        errors: { absent: true }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 5.4"
+
+  - id: T-API-036
+    level: 2
+    group: graphql
+    title: "GraphQL: Fehler erscheinen in errors[] mit cg_code Extension"
+    description: >
+      GraphQL gibt immer HTTP 200 zurück. Fehler müssen in errors[]
+      mit extensions.cg_code erscheinen (kein HTTP 4xx/5xx).
+    request:
+      method: POST
+      path: /v1/graphql
+      auth: bearer
+      role: reader
+      body:
+        query: |
+          { validate(cgta: "INVALID_CGTA") { valid error { cg_code } } }
+    expect:
+      status: 200
+      body:
+        data:
+          validate:
+            valid: { const: false }
+        errors: { absent: true }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 5.6"
+    note: "Syntaxfehler können in errors[] erscheinen; semantische Fehler im data-Feld"
+
+  - id: T-API-037
+    level: 2
+    group: graphql
+    title: "GraphQL: konvertieren via convert Query"
+    request:
+      method: POST
+      path: /v1/graphql
+      auth: bearer
+      role: reader
+      body:
+        query: |
+          query Convert($cgta: CGTA!, $target: String!) {
+            convert(cgta: $cgta, target_domain: $target) {
+              target_cgta mapping_class
+            }
+          }
+        variables:
+          cgta: "{tai_cgta_1}"
+          target: "Gregorian/v2"
+    expect:
+      status: 200
+      body:
+        data:
+          convert:
+            target_cgta: { const: "{greg_cgta_1}" }
+            mapping_class: { const: A }
+        errors: { absent: true }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 5.3"
+
+  # ── WEBHOOKS ───────────────────────────────────────────────────────────────
+
+  - id: T-API-038
+    level: 2
+    group: webhooks
+    title: "Webhook registrieren: 201 Created"
+    request:
+      method: POST
+      path: /v1/webhooks
+      auth: bearer
+      role: contributor
+      body:
+        url: "https://webhook.test/chronogrid"
+        events: [TIMEPOINT_CREATED]
+        secret: "test_secret_32bytes_minimum_length"
+    expect:
+      status: 201
+      body:
+        webhook_id: { type: string, minLength: 1 }
+        url: { const: "https://webhook.test/chronogrid" }
+        events: { contains: TIMEPOINT_CREATED }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 6.5"
+
+  - id: T-API-039
+    level: 2
+    group: webhooks
+    title: "Webhook: Payload enthält HMAC-SHA-256-Signatur"
+    description: >
+      Bei timepoint.created muss der Webhook-Payload den Header
+      X-ChronoGrid-Signature: sha256=<hmac_hex> enthalten.
+      constant_time_compare ist Pflicht (Timing-Angriff-Schutz).
+    precondition: T-API-038
+    type: integration
+    note: >
+      Dieser Test erfordert einen erreichbaren Webhook-Empfänger.
+      cg-testkit startet einen lokalen HTTP-Server für die Laufzeit des Tests.
+    expect:
+      webhook_received:
+        headers:
+          X-ChronoGrid-Signature: { pattern: "^sha256=[0-9a-f]{64}$" }
+          X-ChronoGrid-Event: { const: timepoint.created }
+        body:
+          event: { const: timepoint.created }
+          payload:
+            machine_id: { type: string }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 6.1, 6.2, 6.3"
+
+  - id: T-API-040
+    level: 2
+    group: webhooks
+    title: "Webhook löschen: 204 No Content"
+    precondition: T-API-038
+    request:
+      method: DELETE
+      path: /v1/webhooks/{webhook_id}
+      auth: bearer
+      role: contributor
+    expect:
+      status: 204
+    invariants: []
+    normref: "CG-STD-4100 Kap. 6.5"
+
+  # ── OPENAPI / SPEC-COMPLIANCE ──────────────────────────────────────────────
+
+  - id: T-API-041
+    level: 2
+    group: system
+    title: "OpenAPI-Spec abrufbar und valide"
+    description: >
+      GET /v1/openapi.json muss die OpenAPI 3.1 Spezifikation zurückgeben.
+      cg-testkit validiert das Dokument gegen die OpenAPI 3.1 JSON Schema.
+    request:
+      method: GET
+      path: /v1/openapi.json
+      auth: none
+    expect:
+      status: 200
+      body:
+        openapi: { pattern: "^3\\.1\\." }
+        info:
+          title: { type: string }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 8 (OP-01)"
+
+  - id: T-API-042
+    level: 2
+    group: timepoints
+    title: "I-S1: kein Update-Endpoint vorhanden (PUT /timepoints liefert 405)"
+    description: >
+      Unveränderlichkeit (I-S1) muss API-seitig erzwungen werden.
+      PUT /v1/timepoints/{machine_id} muss 405 Method Not Allowed zurückgeben.
+    precondition: T-API-006
+    request:
+      method: PUT
+      path: "/v1/timepoints/{tai_machine_id_1}"
+      auth: bearer
+      role: contributor
+      body:
+        label: "attempt to update"
+    expect:
+      status: 405
+    invariants: [I-S1]
+    normref: "CG-STD-4100 §2.1, I-S1 (Th. 5.3)"
+
+  - id: T-API-043
+    level: 2
+    group: timepoints
+    title: "I-S1: kein Delete-Endpoint vorhanden (DELETE /timepoints liefert 405)"
+    precondition: T-API-006
+    request:
+      method: DELETE
+      path: "/v1/timepoints/{tai_machine_id_1}"
+      auth: bearer
+      role: admin
+    expect:
+      status: 405
+    invariants: [I-S1]
+    normref: "CG-STD-4100 §2.1, I-S1 (Th. 5.3)"
+
+  - id: T-API-044
+    level: 2
+    group: auth
+    title: "TLS 1.3 wird verwendet (kein TLS 1.2 oder älter)"
+    description: >
+      Alle Verbindungen müssen über TLS 1.3 erfolgen (CG-STD-4100 Kap. 10.3).
+      TLS 1.2-Verbindungen müssen vom Server abgelehnt werden.
+    type: security
+    note: "cg-testkit testet dies über OpenSSL-Verbindungsversuch mit maximal TLS 1.2"
+    expect:
+      tls_version: { minimum: "1.3" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 10.3"
+
+  - id: T-API-045
+    level: 2
+    group: auth
+    title: "HS256-signierte Token werden abgelehnt (401)"
+    description: >
+      Token die mit HS256 signiert sind müssen abgelehnt werden.
+      Nur RS256 und ES256 sind normativ erlaubt (CG-STD-4100 Kap. 7.2).
+    request:
+      method: GET
+      path: /v1/timepoints
+      auth: hs256_token
+    expect:
+      status: 401
+      body:
+        error:
+          cg_code: { pattern: "^CG-E-009" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 7.2"
+    note: "cg-testkit generiert ein syntaktisch valides aber HS256-signiertes JWT"
+
+
+# =============================================================================
+# LEVEL 3 — T-API-046 bis T-API-060
+# Pflicht für Level-3-Konformität (CG-STD-5100 §4.3)
+# =============================================================================
+
+  # ── SEGMENTS / CGUAS ───────────────────────────────────────────────────────
+
+  - id: T-API-046
+    level: 3
+    group: segments
+    title: "Segment registrieren: 201 Created mit korrekten Adressen"
+    description: >
+      POST /v1/segments muss ein neues Segment mit start_address,
+      end_address und size_ns als BigInt-Strings zurückgeben.
+    request:
+      method: POST
+      path: /v1/segments
+      auth: bearer
+      role: contributor
+      body:
+        owner_id: "test.chronogrid.org"
+        size_ns: "1000000000000000"
+        level: 4
+    expect:
+      status: 201
+      body:
+        segment_id: { type: string }
+        start_address: { type: string, pattern: "^[0-9]+$" }
+        end_address: { type: string, pattern: "^[0-9]+$" }
+        size_ns: { const: "1000000000000000" }
+        granted_at: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+    invariants: [I-SEG-1]
+    normref: "CG-STD-4100 Kap. 4.6, CG-STD-6100 Teil A"
+
+  - id: T-API-047
+    level: 3
+    group: segments
+    title: "I-SEG-1: Segmente überschneiden sich nicht"
+    description: >
+      Zwei gleichzeitig registrierte Segmente dürfen sich im Adressraum
+      nicht überschneiden. POST /v1/segments für überlappendes Segment
+      muss 409 mit CG-E-010.003 zurückgeben.
+    precondition: T-API-046
+    request:
+      method: POST
+      path: /v1/segments
+      auth: bearer
+      role: contributor
+      body:
+        owner_id: "overlap.test"
+        parent_id: "{SEGMENT_ID_FROM_T_API_046}"
+        size_ns: "999999999999999"
+        level: 4
+        start_hint: "{START_ADDRESS_FROM_T_API_046}"
+    expect:
+      status: 409
+      body:
+        error:
+          cg_code: { const: "CG-E-010.003" }
+    invariants: [I-SEG-1]
+    normref: "CG-STD-4100 Kap. 4.6, CG-STD-6100 §3.5, I-SEG-1 (Th. 5.5)"
+
+  - id: T-API-048
+    level: 3
+    group: segments
+    title: "CGUA-Adresse auflösen: korrektes Segment"
+    description: >
+      GET /v1/segments/resolve/{cgua} für eine Adresse innerhalb des
+      registrierten Segments muss das korrekte Segment zurückgeben.
+    precondition: T-API-046
+    request:
+      method: GET
+      path: "/v1/segments/resolve/{MID_CGUA_FROM_T_API_046}"
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        segment_id: { const: "{SEGMENT_ID_FROM_T_API_046}" }
+        owner_id: { const: "test.chronogrid.org" }
+        local_offset: { type: string, pattern: "^[0-9]+$" }
+    invariants: [I-SEG-1]
+    normref: "CG-STD-4100 Kap. 4.6"
+
+  # ── RESOLVER ───────────────────────────────────────────────────────────────
+
+  - id: T-API-049
+    level: 3
+    group: resolver
+    title: "Resolver konfigurieren und Status prüfen"
+    precondition: T-API-046
+    request:
+      method: PUT
+      path: "/v1/segments/{SEGMENT_ID_FROM_T_API_046}/resolver"
+      auth: bearer
+      role: admin
+      body:
+        resolver_type: local
+        resolver_config_json: '{"path": "/tmp/cg-testkit-resolver"}'
+    expect:
+      status: 200
+      body:
+        resolver_type: { const: local }
+        resolver_status: { const: unverified }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.8"
+
+  - id: T-API-050
+    level: 3
+    group: resolver
+    title: "Resolver testen: integrity_check passed"
+    precondition: T-API-049
+    request:
+      method: POST
+      path: "/v1/segments/{SEGMENT_ID_FROM_T_API_046}/resolver/test"
+      auth: bearer
+      role: admin
+    expect:
+      status: 200
+      body:
+        status: { const: ok }
+        integrity_check: { const: passed }
+        write_latency_ms: { type: integer }
+        tested_at: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.8"
+
+  - id: T-API-051
+    level: 3
+    group: resolver
+    title: "Resolver-Config für Reader: null (Sicherheit)"
+    description: >
+      GET /v1/segments/{id}/resolver mit Reader-JWT muss
+      resolver_config: null zurückgeben (sensible Konfiguration verborgen).
+    precondition: T-API-049
+    request:
+      method: GET
+      path: "/v1/segments/{SEGMENT_ID_FROM_T_API_046}/resolver"
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        resolver_config: { const: null }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.8, DSGVO P-D3"
+
+  # ── FILES / CGFS ───────────────────────────────────────────────────────────
+
+  - id: T-API-052
+    level: 3
+    group: files
+    title: "Datei-Manifest speichern: 201 mit korrektem CGFI"
+    description: >
+      POST /v1/files muss 201 zurückgeben und ein CGFI berechnen:
+      SHA-256(TAI-ns ‖ ContentHash ‖ Typ-ID ‖ Seq).
+    request:
+      method: POST
+      path: /v1/files
+      auth: bearer
+      role: contributor
+      body:
+        tai_timestamp_ns: "{tai_value_1}"
+        content_hash: "{test_file_content_hash}"
+        type_id: "application/pdf"
+        seq: 0
+    expect:
+      status: 201
+      body:
+        cgfi: { const: "{test_cgfi}" }
+        tai_timestamp_ns: { const: "{tai_value_1}" }
+        content_hash: { const: "{test_file_content_hash}" }
+        deleted_at: { const: null }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 4.7, CG-STD-3100 §5.4"
+
+  - id: T-API-053
+    level: 3
+    group: files
+    title: "Datei-Manifest abrufen per CGFI"
+    precondition: T-API-052
+    request:
+      method: GET
+      path: "/v1/files/{test_cgfi}"
+      auth: bearer
+      role: reader
+    expect:
+      status: 200
+      body:
+        cgfi: { const: "{test_cgfi}" }
+        deleted_at: { const: null }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 4.7"
+
+  - id: T-API-054
+    level: 3
+    group: files
+    title: "DSGVO Art. 17 Tombstone: deleted_at gesetzt, CGFI erhalten"
+    description: >
+      DELETE /v1/files/{cgfi} setzt deleted_at und deleted_reason.
+      CGFI und content_hash bleiben erhalten (I-S1 — kein physisches Löschen).
+      Nachfolgendes GET muss Tombstone zurückgeben (deleted_at nicht null).
+    precondition: T-API-052
+    request:
+      method: DELETE
+      path: "/v1/files/{test_cgfi}"
+      auth: bearer
+      role: contributor
+      body:
+        deleted_reason: "GDPR Art.17 Test"
+    expect:
+      status: 200
+      body:
+        cgfi: { const: "{test_cgfi}" }
+        deleted_at: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+        deleted_reason: { const: "GDPR Art.17 Test" }
+        content_hash: { const: "{test_file_content_hash}" }
+    invariants: [I-S1]
+    normref: "CG-STD-4100 Kap. 4.7, DSGVO Art. 17, I-S1 (Th. 5.3)"
+
+  # ── GRAPHQL SUBSCRIPTIONS ──────────────────────────────────────────────────
+
+  - id: T-API-055
+    level: 3
+    group: graphql
+    title: "GraphQL Subscription: timepointAdded via WebSocket"
+    description: >
+      Subscription timepointAdded(domain: "TAI/v1") über graphql-ws-Protokoll
+      muss nach dem Speichern eines neuen TAI-Zeitpunkts eine Benachrichtigung
+      liefern. Auth: connection_init payload {"Authorization": "Bearer <jwt>"}.
+    type: integration
+    note: >
+      cg-testkit öffnet eine WSS-Verbindung, subscribiert, speichert dann
+      einen Zeitpunkt via REST und prüft ob die Subscription-Nachricht eintrifft.
+    expect:
+      subscription_message:
+        machine_id: { type: string, minLength: 64 }
+        cgta: { pattern: "^CG:TAI:[0-9]+/v[0-9]+$" }
+        domain:
+          domain_id: { const: "TAI/v1" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 5.5, schema.graphql Subscription.timepointAdded"
+
+  - id: T-API-056
+    level: 3
+    group: graphql
+    title: "GraphQL Subscription: domainPublished Benachrichtigung"
+    type: integration
+    precondition: T-API-017
+    expect:
+      subscription_message:
+        domain_id: { const: "TestLinear/v1" }
+        status: { const: published }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 5.5, schema.graphql Subscription.domainPublished"
+
+  # ── KONFORMITÄTSZERTIFIKAT ─────────────────────────────────────────────────
+
+  - id: T-API-057
+    level: 3
+    group: conformance
+    title: "Alle Level-1-Tests bestanden (55/55)"
+    description: >
+      Voraussetzung für Level-3: alle T-L1-* Tests aus CG-STD-3100
+      (Engine Level 1) UND T-API-001 bis T-API-015 müssen bestanden sein.
+    type: aggregate
+    requires:
+      - suite: T-L1
+        min_pass: 55
+      - suite: T-API
+        range: [1, 15]
+        min_pass: 15
+    invariants: []
+    normref: "CG-STD-5100 §4.3"
+
+  - id: T-API-058
+    level: 3
+    group: conformance
+    title: "Alle Level-2-Tests bestanden"
+    type: aggregate
+    requires:
+      - suite: T-API
+        range: [16, 45]
+        min_pass: 30
+    invariants: []
+    normref: "CG-STD-5100 §4.3"
+
+  - id: T-API-059
+    level: 3
+    group: performance
+    title: "Performance: >= 1000 Zeitpunkte/s via REST"
+    description: >
+      Referenzimplementierung erreicht 288.564 Zeitpunkte/s (CG-BENCH-001).
+      Level-3-Minimum: 1.000 Zeitpunkte/s auf Standard-Hardware.
+      Test: 10.000 sequenzielle POST /v1/timepoints (Batch à 1000).
+    type: performance
+    config:
+      total_timepoints: 10000
+      batch_size: 1000
+      timeout_seconds: 60
+    expect:
+      throughput_per_second: { minimum: 1000 }
+      error_rate: { maximum: 0.0 }
+    invariants: [I-R3]
+    normref: "CG-STD-4100 Kap. 9 (Level 3), CG-BENCH-001"
+
+  - id: T-API-060
+    level: 3
+    group: conformance
+    title: "Geo-Redundanz: mindestens 2 unabhängige Storage-Regionen"
+    description: >
+      Level 3 erfordert Geo-Redundanz (CG-STD-4100 Kap. 9).
+      GET /v1/health auf mindestens 2 Endpoints muss unterschiedliche
+      storage_region Werte zurückgeben. Beide müssen status: ok haben.
+    type: infrastructure
+    note: >
+      Erfordert REPLICA_ENDPOINT_URL als Umgebungsvariable.
+      Nur ausführbar wenn zwei getrennte Registry-Instanzen verfügbar sind.
+    expect:
+      primary:
+        status: { const: ok }
+        storage_region: { type: string }
+      replica:
+        status: { const: ok }
+        storage_region: { type: string, not_equal_to: "{PRIMARY_STORAGE_REGION}" }
+    invariants: []
+    normref: "CG-STD-4100 Kap. 9 (Level 3), CG-STD-5100 §4.3"
+
+
+# =============================================================================
+# FEHLERCODE-REFERENZ (normativ)
+# CG-STD-2100 + CG-STD-4100 Kap. 11
+# =============================================================================
+
+error_codes:
+  CG-E-001: { class: SyntaxError,       fatal: false, http: 400 }
+  CG-E-002: { class: SemanticError,     fatal: false, http: 400 }
+  CG-E-003: { class: ExtentError,       fatal: true,  http: 400, note: "BigInt-Overflow — FATAL" }
+  CG-E-004: { class: HierarchyError,    fatal: false, http: 400 }
+  CG-E-005: { class: MappingError,      fatal: false, http: 422, note: "Chain-Limit > 8" }
+  CG-E-006: { class: InvariantError,    fatal: true,  http: 500, note: "Immer ein Bug — melden" }
+  CG-E-007: { class: VersionError,      fatal: false, http: 422 }
+  CG-E-008: { class: ConstraintError,   fatal: false, http: 422 }
+  CG-E-009: { class: StorageAPIError,   fatal: false, http: [401, 403, 404, 405, 409] }
+  CG-E-010: { class: CGUASError,        fatal: false, http: [404, 409], sub_codes: 8 }
+  CG-E-011: { class: CGFSError,         fatal: false, http: [409, 422], sub_codes: 12 }

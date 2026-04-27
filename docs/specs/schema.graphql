@@ -1,0 +1,1002 @@
+# =============================================================================
+# ChronoGrid GraphQL Schema — Anlage B zu CG-STD-4100 v0.7
+# =============================================================================
+# Normativ — bei Widersprüchen zwischen CG-STD-4100 Kap. 5 und dieser Anlage
+# hat die Anlage Vorrang.
+#
+# Endpoint:         POST  https://api.chronogrid.org/v1/graphql
+# Subscriptions:    WS    https://api.chronogrid.org/v1/graphql/ws
+# Protokoll:        graphql-ws (https://github.com/enisdenjo/graphql-ws)
+# Authentifizierung: JWT Bearer (RS256/ES256) — alle Felder ausser @public
+# Fehlerformat:     HTTP 200, Fehler in errors[].extensions.cg_code
+#
+# Normative Referenzen:
+#   CG-STD-4100 v0.7 Kap. 5  — GraphQL API
+#   CG-STD-3100 v1.5          — Engine (BigInt, MachineID, Allen)
+#   CG-STD-2100 v1.4          — CTDDL, Fehlerklassen CG-E-001–008
+#   CG-STD-6100 v0.5          — CGUAS / CGFS
+#   openapi.yaml (Anlage A)   — REST-Parallelspezifikation
+#
+# OP-06 (Auth-Flow über WebSocket) ist noch offen (TSC-Entscheidung).
+#   Bis zur Freigabe: connection_init-Payload muss {"Authorization":"Bearer <jwt>"}
+#   enthalten. Details werden in CG-STD-4100 v1.0 normativ festgelegt.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CUSTOM SCALARS
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+ChronoGrid Time Address. Syntax: CG:{Domain}:{Wert}/v{n}
+Zeitwert als Dezimalstring — kein IEEE-754 Number (Invariante I-R3).
+Beispiel: "CG:TAI:1742041937000000000/v1"
+"""
+scalar CGTA
+
+"""
+Beliebig große Ganzzahl als Dezimalstring (ℤ∞, CG-STD-0000 §1.2).
+Kein JSON Number — verlustfreie Übertragung von Nanosekunden-Timestamps.
+Pflicht für absolute_value, segment-Adressen, CGUA-Offsets.
+"""
+scalar BigInt
+
+"""
+SHA-256-Hash als 64-stelliger Hexstring. Wird für MachineID und CGFI verwendet.
+Pattern: /^[0-9a-f]{64}$/
+"""
+scalar Hash
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DIRECTIVES
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+Authentifizierungs-Direktive. Felder ohne @auth sind öffentlich zugänglich.
+Felder mit @auth erfordern ein gültiges JWT mit der angegebenen Mindeststufe.
+RBAC-Reihenfolge (aufsteigend): reader < contributor < maintainer < tsc < admin
+"""
+directive @auth(
+  "Mindest-Rolle für dieses Feld oder diese Operation"
+  role: Role = READER
+) on FIELD_DEFINITION | OBJECT
+
+"""
+Markiert Felder die sensible Konfigurationsdaten enthalten.
+Wird bei unzureichender Rolle durch null ersetzt (DSGVO P-D3, CG-STD-4100 §10.5).
+"""
+directive @sensitive(
+  "Mindest-Rolle um den realen Wert zu sehen"
+  minRole: Role = ADMIN
+) on FIELD_DEFINITION
+
+"""
+Markiert ein Feld das einen BigInt-Wert als String überträgt.
+Implementierungen müssen diesen Wert als BigInt / arbitrary-precision integer behandeln.
+"""
+directive @bigint on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""RBAC-Rollen (CG-STD-4100 Kap. 7.3, CG-ORG-2100)"""
+enum Role {
+  READER       # Lesen aller publizierten Ressourcen
+  CONTRIBUTOR  # Einreichen von Domains, Mappings, Zeitpunkten
+  MAINTAINER   # Freigabe eigener Domains
+  TSC          # TSC-Vote, Domain-Publikation
+  ADMIN        # Vollzugriff inkl. Admin-Endpoints
+}
+
+"""
+Domain-Stabilität (CG-STD-2100 v1.4 §3.1).
+Bestimmt Change-Management-Anforderungen und scientific_dependency-Pflicht.
+"""
+enum Stability {
+  PERMANENT   # Keine Änderungen erlaubt (z.B. TAI, SI-Sekunde)
+  STABLE      # Änderungen nur über TSC-Vote möglich
+  MEDIUM      # scientific_dependency Pflicht; Änderungen mit Begründung
+  LOW         # Häufige Änderungen erwartet; scientific_dependency Pflicht
+}
+
+"""Domain-Lifecycle-Status"""
+enum DomainStatus {
+  DRAFT       # Eingereicht, noch nicht freigegeben
+  PUBLISHED   # Freigegeben und unveränderlich (I-D1)
+  DEPRECATED  # Veraltet; migration_to gibt Nachfolger an
+}
+
+"""
+Mapping-Klassen (CG-STD-0000 §3, CG-STD-3100 §4).
+Klasse A: deterministische Funktion; Chain-Limit 8 Schritte.
+Klasse B: Funktional über Weltlinie W; nur Level 3; erfordert worldline_ref.
+"""
+enum MappingClass {
+  A  # f: ℤ∞ → ℤ∞ (linear, piecewise-linear, nonlinear)
+  B  # F[W](τ) — relativistisch, RK45-Integration
+}
+
+"""
+Alle 13 Allen-Relationen (J.F. Allen 1983; CG-STD-0000 §6).
+Definiert die zeitliche Beziehung zwischen zwei Intervallen A und B.
+"""
+enum AllenRelation {
+  PRECEDES      # A endet bevor B beginnt
+  MEETS         # A endet genau wo B beginnt
+  OVERLAPS      # A beginnt vor B, überschneidet sich
+  FINISHED_BY   # A endet gleichzeitig mit B, A ist länger
+  CONTAINS      # B liegt vollständig innerhalb A
+  STARTS        # A und B beginnen gleichzeitig, A ist kürzer
+  EQUALS        # A und B sind identisch
+  STARTED_BY    # A und B beginnen gleichzeitig, A ist länger
+  DURING        # A liegt vollständig innerhalb B
+  FINISHES      # A und B enden gleichzeitig, A ist kürzer
+  OVERLAPPED_BY # B beginnt vor A, überschneidet sich
+  MET_BY        # B endet genau wo A beginnt
+  PRECEDED_BY   # B endet bevor A beginnt
+}
+
+"""
+Normative Resolver-Backend-Typen (CG-STD-4100 Kap. 3.9).
+Bestimmt wie CGUA-Adressen auf physische Speicherorte gemappt werden.
+"""
+enum ResolverType {
+  URL    # Generische HTTP/HTTPS-URL mit {offset}-Platzhalter
+  S3     # AWS S3 oder S3-kompatibler Object Store
+  GCS    # Google Cloud Storage
+  AZURE  # Azure Blob Storage
+  IPFS   # InterPlanetary File System (Content-Addressed)
+  LOCAL  # Lokales Dateisystem (nur für Level-1-Implementierungen)
+  CUSTOM # Proprietäre Implementierung (Zertifizierung erforderlich)
+}
+
+"""Resolver-Verifikationsstatus"""
+enum ResolverStatus {
+  VERIFIED    # Letzter Test erfolgreich
+  UNVERIFIED  # Noch nicht getestet
+  FAILED      # Letzter Test fehlgeschlagen
+}
+
+"""CGTA-Semantiktypen (CG-STD-2100 v1.2, CG-STD-0000 §1.4)"""
+enum Semantics {
+  TIME      # Klassische Zeitdomäne
+  ADDRESS   # Adressraum-Domain (CGUAS)
+  FILETYPE  # Dateityp-Definition (CGFS)
+}
+
+"""Webhook-Ereignistypen (CG-STD-4100 Kap. 6.1)"""
+enum WebhookEvent {
+  TIMEPOINT_CREATED
+  DOMAIN_PUBLISHED
+  DOMAIN_SUBMITTED
+  MAPPING_PUBLISHED
+  RELATION_COMPUTED
+  SEGMENT_CREATED
+  FILE_MANIFEST_CREATED
+  FILE_MANIFEST_DELETED
+  SYSTEM_HEALTH
+}
+
+"""System-Status (GET /health)"""
+enum HealthStatus {
+  OK
+  DEGRADED
+  UNAVAILABLE
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORE OBJECT TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+Gespeicherter CGTA-Zeitpunkt. Unveränderlich nach dem Speichern (I-S1).
+Primärschlüssel: machine_id (SHA-256, deterministisch, I-R3).
+"""
+type Timepoint @auth(role: READER) {
+  """SHA-256(DomainName ‖ AbsoluterWert ‖ Version) — 64 Hex-Zeichen"""
+  machine_id: Hash!
+
+  """Vollständige CGTA-Adresse. Syntax: CG:{Domain}:{Wert}/v{n}"""
+  cgta: CGTA!
+
+  """
+  Absoluter Zeitwert als BigInt-String (Dezimal, kein IEEE-754).
+  Einheit: Domain-Granularität (meist Nanosekunden für TAI).
+  """
+  absolute_value: BigInt! @bigint
+
+  """Domain-Definition dieser Zeitadresse"""
+  domain: Domain!
+
+  """Zeitkomponenten (Jahr, Monat, Tag etc.) wenn Domain eine hierarchy hat"""
+  components: [Component!]!
+
+  """Optionales Label (DSGVO P-D3: nur auf Anfrage übermittelt)"""
+  label: String
+
+  """Optionale Tags für Klassifizierung"""
+  tags: [String!]!
+
+  """Zeitpunkt des Eintrags als TAI-CGTA"""
+  created_at: CGTA!
+}
+
+"""
+Aufgelöste Zeitkomponente eines Zeitpunkts.
+Ermöglicht effiziente Filterung (z.B. alle Zeitpunkte im Jahr 2026).
+"""
+type Component {
+  """Typ: year, month, day, hour, minute, second, millisecond, nanosecond, week"""
+  component_type: String!
+
+  """Numerischer Wert der Komponente"""
+  component_value: Int!
+}
+
+"""
+Registrierte CTDDL-Domain-Definition. Unveränderlich nach Publikation (I-D1).
+Jede Version ist ein eigener, unveränderlicher Eintrag.
+"""
+type Domain @auth(role: READER) {
+  """Eindeutige Domain-ID: "{name}/v{version}". Beispiel: "TAI/v1" """
+  domain_id: ID!
+
+  name: String!
+  version: Int!
+  stability: Stability!
+  status: DomainStatus!
+  semantics: Semantics!
+
+  """Vollständige CTDDL-JSON-Definition als String"""
+  ctddl_json: String!
+
+  """SHA-256 über ctddl_json — Integritätsprüfung"""
+  integrity_hash: Hash!
+
+  """Zeitpunkt der Publikation als TAI-CGTA (null wenn noch Draft)"""
+  published_at: CGTA
+
+  """Alle Mappings die von dieser Domain ausgehen"""
+  mappings: [Mapping!]!
+
+  """Vorgänger-Version dieser Domain (null wenn erste Version)"""
+  previous_version: Domain
+}
+
+"""
+Versionierte Mapping-Regel zwischen zwei Domains.
+Unveränderlich nach Publikation (I-D1).
+Chain-Limit: max. 8 aufeinanderfolgende Mappings (CG-E-005 bei Überschreitung).
+"""
+type Mapping @auth(role: READER) {
+  mapping_id: ID!
+  source_domain: Domain!
+  target_domain: Domain!
+
+  """Klasse A: deterministisch; Klasse B: relativistisch (erfordert Weltlinie)"""
+  mapping_class: MappingClass!
+
+  status: DomainStatus!
+  published_at: CGTA
+  integrity_hash: Hash!
+}
+
+"""
+Allen-Relation zwischen zwei Zeitintervallen.
+Kann berechnet (zustandslos) oder persistiert werden.
+"""
+type Relation @auth(role: READER) {
+  relation_id: ID
+
+  interval_a: Interval!
+  interval_b: Interval!
+
+  """Eine der 13 Allen-Relationen"""
+  relation: AllenRelation!
+
+  """Einbuchstabiges Symbol (z.B. "o" für OVERLAPS)"""
+  symbol: String!
+
+  """Menschenlesbare Beschreibung"""
+  description: String!
+
+  """Nur gesetzt wenn Relation persistiert wurde"""
+  created_at: CGTA
+}
+
+"""Zeitintervall definiert durch Start- und End-CGTA"""
+type Interval {
+  start: CGTA!
+  end: CGTA!
+}
+
+"""
+CGUAS-Segment — Zuteilung eines Adressbereichs im 79-Bit-Adressraum.
+Adressraum: 0 bis 2⁷⁹−1 Nanosekunden (CG-STD-6100 Kap. 3).
+"""
+type Segment @auth(role: READER) {
+  segment_id: ID!
+  owner_id: String!
+
+  """Übergeordnetes Segment (null für Root-Segment)"""
+  parent: Segment
+
+  """Untergeordnete Segmente"""
+  children: [Segment!]!
+
+  """Startadresse im CGUAS (BigInt als String)"""
+  start_address: BigInt! @bigint
+
+  """Endadresse im CGUAS (BigInt als String, exklusiv)"""
+  end_address: BigInt! @bigint
+
+  """Segmentgröße in Nanosekunden (BigInt als String)"""
+  size_ns: BigInt! @bigint
+
+  """Hierarchieebene (1 = Root, 8 = kleinste Einheit)"""
+  level: Int!
+
+  """SHA-256 über Segment-Definition"""
+  integrity_hash: Hash!
+
+  """CGUA-Basisadresse als CGTA"""
+  cgua_base: CGTA!
+
+  """Zeitpunkt der Registrierung"""
+  granted_at: CGTA!
+
+  """
+  Resolver-Konfiguration. Nur sichtbar für segment.admin-Rolle.
+  Wird für andere Rollen durch null ersetzt (Sicherheit).
+  """
+  resolver: Resolver @sensitive(minRole: ADMIN)
+}
+
+"""
+Resolver-Konfiguration für physisches Mapping von CGUA-Adressen.
+7 normative Backend-Typen (CG-STD-4100 Kap. 3.9).
+"""
+type Resolver {
+  resolver_type: ResolverType!
+
+  """
+  Backend-spezifische Konfiguration (z.B. bucket, prefix, region für S3).
+  Nur sichtbar für segment.admin-Rolle.
+  """
+  resolver_config: String @sensitive(minRole: ADMIN)
+
+  resolver_status: ResolverStatus!
+  last_tested_at: CGTA
+  last_test_result: String
+}
+
+"""
+CGFS-Datei-Manifest. Verbindet einen CGFI-Fingerabdruck mit Metadaten.
+Logisch löschbar (DSGVO Art. 17 Tombstone) aber nicht physisch (I-S1).
+CGFI = SHA-256(TAI-ns ‖ ContentHash ‖ Typ-ID ‖ Seq).
+"""
+type FileManifest @auth(role: READER) {
+  """CGFI — SHA-256-Fingerabdruck der Datei"""
+  cgfi: Hash!
+
+  """TAI-Timestamp der Dateierstellung in Nanosekunden"""
+  tai_timestamp_ns: BigInt! @bigint
+
+  """SHA-256 des Dateiinhalts"""
+  content_hash: Hash!
+
+  """MIME-Typ oder CGFS-FileType-ID"""
+  type_id: String!
+
+  """Sequenznummer bei mehreren Dateien im selben Nanosekunden-Slot"""
+  seq: Int!
+
+  """Optionales Label"""
+  label: String
+
+  """Optionale Sprache (BCP 47)"""
+  language: String
+
+  """Vorgänger-Version dieser Datei"""
+  previous_version: FileManifest
+
+  """Zeitpunkt der Manifest-Erstellung als TAI-CGTA"""
+  created_at: CGTA!
+
+  """
+  Tombstone-Zeitpunkt (DSGVO Art. 17). Null wenn nicht gelöscht.
+  Inhalt im Blob-Store muss separat überschrieben werden.
+  """
+  deleted_at: CGTA
+
+  """Löschgrund (Pflicht wenn deleted_at gesetzt)"""
+  deleted_reason: String
+}
+
+"""System-Status (entspricht GET /v1/health)"""
+type Health {
+  status: HealthStatus!
+  version: String!
+
+  """Erreichtes Konformitätslevel (1, 2 oder 3)"""
+  conformance_level: Int!
+
+  """Pflicht für Nicht-EWR-Betrieb (DSGVO P-D4)"""
+  storage_region: String
+
+  """cg-engine Package-Version"""
+  engine_version: String!
+
+  """Aktueller Zeitstempel als TAI-CGTA"""
+  timestamp: CGTA!
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESULT / COMPUTED TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""Ergebnis einer Zeitpunkt-Konvertierung (zustandslos)"""
+type ConversionResult {
+  source_cgta: CGTA!
+  source_domain: String!
+
+  target_cgta: CGTA!
+  target_absolute_value: BigInt! @bigint
+  target_domain: String!
+  target_machine_id: Hash!
+
+  """Angewandte Mapping-Regel"""
+  mapping_id: String!
+  mapping_class: MappingClass!
+}
+
+"""Ergebnis einer CGTA-Validierung (zustandslos)"""
+type ValidationResult {
+  valid: Boolean!
+  domain: String
+  machine_id: Hash
+
+  """Gesetzt wenn valid = false"""
+  error: CgError
+}
+
+"""Ergebnis eines Resolver-Tests"""
+type ResolverTestResult {
+  status: ResolverStatus!
+  resolver_type: ResolverType!
+  write_latency_ms: Int
+  read_latency_ms: Int
+  integrity_check: String!
+  tested_at: CGTA!
+
+  """Gesetzt wenn status = FAILED"""
+  error: CgError
+}
+
+"""Ergebnis einer CGUA-Adressauflösung"""
+type CguaResolveResult {
+  cgua: CGTA!
+  segment_id: ID!
+  owner_id: String!
+  local_offset: BigInt! @bigint
+  resolver_url: String
+}
+
+"""
+ChronoGrid-Fehler im GraphQL errors[].extensions Objekt.
+GraphQL gibt immer HTTP 200 zurück — Fehler erscheinen im errors-Array.
+"""
+type CgError {
+  """CG-E-XXX.YYY Fehlercode (CG-STD-2100 + CG-STD-4100 Kap. 11)"""
+  cg_code: String!
+
+  message: String!
+
+  """true bei FATAL-Fehlern (z.B. CG-E-003 BigInt-Overflow)"""
+  fatal: Boolean!
+
+  """Äquivalenter HTTP-Statuscode"""
+  http_equiv: Int!
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONNECTION / PAGINATION TYPES
+# Relay-kompatible Cursor-Pagination (opaque Cursor, BigInt-sicher)
+# ─────────────────────────────────────────────────────────────────────────────
+
+type TimepointConnection {
+  edges: [TimepointEdge!]!
+  pageInfo: PageInfo!
+
+  """Approximative Gesamtzahl — nicht normativ, kann abweichen"""
+  total_hint: Int
+}
+
+type TimepointEdge {
+  node: Timepoint!
+  cursor: String!
+}
+
+type DomainConnection {
+  edges: [DomainEdge!]!
+  pageInfo: PageInfo!
+  total_hint: Int
+}
+
+type DomainEdge {
+  node: Domain!
+  cursor: String!
+}
+
+type MappingConnection {
+  edges: [MappingEdge!]!
+  pageInfo: PageInfo!
+}
+
+type MappingEdge {
+  node: Mapping!
+  cursor: String!
+}
+
+type RelationConnection {
+  edges: [RelationEdge!]!
+  pageInfo: PageInfo!
+}
+
+type RelationEdge {
+  node: Relation!
+  cursor: String!
+}
+
+type SegmentConnection {
+  edges: [SegmentEdge!]!
+  pageInfo: PageInfo!
+}
+
+type SegmentEdge {
+  node: Segment!
+  cursor: String!
+}
+
+type FileManifestConnection {
+  edges: [FileManifestEdge!]!
+  pageInfo: PageInfo!
+}
+
+type FileManifestEdge {
+  node: FileManifest!
+  cursor: String!
+}
+
+"""Standard Relay-kompatible PageInfo"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""Ergebnis eines Batch-saveTimepoints"""
+type BatchTimepointResult {
+  """Anzahl erfolgreich gespeicherter Zeitpunkte"""
+  saved: Int!
+
+  """Anzahl bereits vorhandener Zeitpunkte (idempotent — kein Fehler)"""
+  already_existed: Int!
+
+  """Fehlgeschlagene Einträge mit Fehlercode"""
+  failed: [BatchTimepointError!]!
+}
+
+type BatchTimepointError {
+  index: Int!
+  cgta: CGTA
+  error: CgError!
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INPUT TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""Zeitpunkt speichern — Kernoperation"""
+input SaveTimepointInput {
+  """Vollständige CGTA-Adresse"""
+  cgta: CGTA!
+
+  """Optionales Label (DSGVO P-D3)"""
+  label: String
+
+  """Optionale Tags"""
+  tags: [String!]
+}
+
+"""Bis zu 1000 Zeitpunkte in einer Operation (max. Batch-Größe: CG-E-009.003)"""
+input BatchSaveTimepointsInput {
+  timepoints: [SaveTimepointInput!]!
+}
+
+"""Allen-Relation zwischen zwei Intervallen persistieren"""
+input SaveRelationInput {
+  interval_a: IntervalInput!
+  interval_b: IntervalInput!
+}
+
+input IntervalInput {
+  start: CGTA!
+  end: CGTA!
+}
+
+"""Neue Domain-Definition einreichen (erstellt Draft, löst CIP-D aus)"""
+input SubmitDomainInput {
+  """Vollständige CTDDL-Definition als JSON-String"""
+  ctddl_json: String!
+}
+
+"""Neue Mapping-Regel einreichen"""
+input SubmitMappingInput {
+  source_domain_id: ID!
+  target_domain_id: ID!
+  mapping_class: MappingClass!
+
+  """Mapping-Algorithmus-Definition als JSON-String"""
+  definition_json: String!
+}
+
+"""Neues CGUAS-Segment registrieren"""
+input CreateSegmentInput {
+  owner_id: String!
+
+  """Übergeordnetes Segment (null = Root-Level)"""
+  parent_id: ID
+
+  """Segmentgröße in Nanosekunden (BigInt als String)"""
+  size_ns: BigInt!
+
+  """Hierarchieebene (1–8)"""
+  level: Int!
+}
+
+"""Resolver-Konfiguration setzen"""
+input SetResolverInput {
+  resolver_type: ResolverType!
+
+  """Backend-spezifische Konfiguration als JSON-String"""
+  resolver_config_json: String!
+}
+
+"""CGFS-Datei-Manifest speichern"""
+input SaveFileManifestInput {
+  """TAI-Timestamp in Nanosekunden"""
+  tai_timestamp_ns: BigInt!
+
+  """SHA-256 des Dateiinhalts"""
+  content_hash: Hash!
+
+  """MIME-Typ oder CGFS-FileType-ID"""
+  type_id: String!
+
+  """Sequenznummer (Standard: 0)"""
+  seq: Int = 0
+
+  label: String
+  language: String
+
+  """CGFI des Vorgängers (Versionskette)"""
+  prev_cgfi: Hash
+}
+
+"""Datei logisch löschen (DSGVO Art. 17 Tombstone)"""
+input DeleteFileManifestInput {
+  """Pflicht — dokumentiert den Löschgrund für den Audit-Trail"""
+  deleted_reason: String!
+}
+
+"""Filter für Zeitpunkt-Listen"""
+input TimepointFilter {
+  domain: String
+  component_year: Int
+  component_month: Int
+  component_day: Int
+  tags: [String!]
+}
+
+"""Filter für Domain-Listen"""
+input DomainFilter {
+  stability: Stability
+  status: DomainStatus
+  semantics: Semantics
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROOT TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+schema {
+  query:        Query
+  mutation:     Mutation
+  subscription: Subscription
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QUERY
+# ─────────────────────────────────────────────────────────────────────────────
+
+type Query {
+
+  # ── Zeitpunkte (CG-STD-4100 Kap. 4.2) ──────────────────────────────────
+
+  """
+  Einzelnen Zeitpunkt per MachineID abrufen.
+  MachineID = SHA-256(DomainName ‖ AbsoluterWert ‖ Version).
+  """
+  timepoint(machine_id: Hash!): Timepoint @auth(role: READER)
+
+  """
+  Zeitpunkt per CGTA-String abrufen (berechnet MachineID intern).
+  Zustandslos — kein Seiteneffekt.
+  """
+  timepointByCgta(cgta: CGTA!): Timepoint @auth(role: READER)
+
+  """
+  Zeitpunkte auflisten mit Filterung und Cursor-Paginierung.
+  Level 1: optional. Level 2+: Pflicht.
+  """
+  timepoints(
+    filter: TimepointFilter
+    after:  String
+    first:  Int = 100
+  ): TimepointConnection! @auth(role: READER)
+
+  """
+  Zeitpunkt konvertieren — zustandslos, kein Seiteneffekt.
+  Klasse-B-Mappings erfordern worldline_ref.
+  Fehler: CG-E-005 wenn Chain-Limit (8) überschritten.
+  """
+  convert(
+    cgta:          CGTA!
+    target_domain: String!
+    worldline_ref: String
+  ): ConversionResult! @auth(role: READER)
+
+  """
+  CGTA-String validieren — zustandslos, kein Seiteneffekt.
+  Prüft Syntax (CG-E-001) und Semantik (CG-E-002, CG-E-003).
+  """
+  validate(cgta: CGTA!): ValidationResult! @auth(role: READER)
+
+  # ── Relationen (Allen's Interval Algebra) ────────────────────────────────
+
+  """Persistierte Relation abrufen"""
+  relation(relation_id: ID!): Relation @auth(role: READER)
+
+  """Relationen auflisten"""
+  relations(
+    after: String
+    first: Int = 50
+  ): RelationConnection! @auth(role: READER)
+
+  """
+  Allen-Relation berechnen — zustandslos.
+  Berechnet die Relation zwischen zwei beliebigen Zeitintervallen,
+  auch domänenübergreifend (TAI als gemeinsame Referenz).
+  """
+  computeRelation(
+    interval_a: IntervalInput!
+    interval_b: IntervalInput!
+  ): Relation! @auth(role: READER)
+
+  # ── Domain-Registry (CG-STD-4100 Kap. 4.3) ──────────────────────────────
+
+  """Domain per ID abrufen. Beispiel: domain_id = "TAI/v1" """
+  domain(domain_id: ID!): Domain @auth(role: READER)
+
+  """Alle registrierten Domains auflisten"""
+  domains(
+    filter: DomainFilter
+    after:  String
+    first:  Int = 50
+  ): DomainConnection! @auth(role: READER)
+
+  """Alle Mappings einer Domain auflisten"""
+  domainMappings(
+    domain_id: ID!
+    after:     String
+    first:     Int = 50
+  ): MappingConnection! @auth(role: READER)
+
+  # ── Segments / CGUAS (CG-STD-4100 Kap. 4.6) ─────────────────────────────
+
+  """Segment per ID abrufen"""
+  segment(segment_id: ID!): Segment @auth(role: READER)
+
+  """Alle Segments auflisten"""
+  segments(
+    owner_id: String
+    after:    String
+    first:    Int = 50
+  ): SegmentConnection! @auth(role: READER)
+
+  """
+  CGUA-Adresse zu Segment auflösen.
+  Fehler: CG-E-010.002 SegmentNotFound wenn keine Zuteilung existiert.
+  """
+  resolveCgua(cgua: BigInt!): CguaResolveResult @auth(role: READER)
+
+  """Resolver-Konfiguration eines Segments abrufen"""
+  segmentResolver(segment_id: ID!): Resolver @auth(role: ADMIN)
+
+  # ── Files / CGFS (CG-STD-4100 Kap. 4.7) ─────────────────────────────────
+
+  """Datei-Manifest per CGFI abrufen"""
+  fileManifest(cgfi: Hash!): FileManifest @auth(role: READER)
+
+  """Versionsgeschichte einer Datei (über prev_cgfi-Kette)"""
+  fileManifestVersions(cgfi: Hash!): [FileManifest!]! @auth(role: READER)
+
+  """Datei-Manifeste auflisten"""
+  fileManifests(
+    type_id:  String
+    after:    String
+    first:    Int = 50
+  ): FileManifestConnection! @auth(role: READER)
+
+  # ── System ───────────────────────────────────────────────────────────────
+
+  """System-Status. Level 1: Pflicht (kein Auth erforderlich)."""
+  health: Health!
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MUTATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+type Mutation {
+
+  # ── Zeitpunkte ────────────────────────────────────────────────────────────
+
+  """
+  Zeitpunkt speichern (idempotent — I-S1).
+  Bei bekannter MachineID wird der vorhandene Eintrag zurückgegeben (kein Fehler).
+  Fehler: CG-E-001 (Syntax), CG-E-003 (Extent), CG-E-006 (Invariante).
+  """
+  saveTimepoint(input: SaveTimepointInput!): Timepoint!
+    @auth(role: CONTRIBUTOR)
+
+  """
+  Bis zu 1000 Zeitpunkte in einer Operation speichern (OP-05).
+  Fehler: CG-E-009.003 bei Überschreitung der Batch-Größe.
+  Teilfehler werden pro Eintrag berichtet — kein globaler Rollback.
+  """
+  batchSaveTimepoints(input: BatchSaveTimepointsInput!): BatchTimepointResult!
+    @auth(role: CONTRIBUTOR)
+
+  # ── Relationen ────────────────────────────────────────────────────────────
+
+  """Berechnete Allen-Relation persistieren"""
+  saveRelation(input: SaveRelationInput!): Relation!
+    @auth(role: CONTRIBUTOR)
+
+  # ── Domain-Registry ───────────────────────────────────────────────────────
+
+  """
+  Neue CTDDL-Domain-Definition einreichen (erstellt Draft, löst CIP-D aus).
+  Nach Einreichung muss ein TSC-Vote für Publikation erfolgen.
+  Fehler: CG-E-001 (CTDDL Syntax), CG-E-002 (CTDDL Semantik).
+  """
+  submitDomain(input: SubmitDomainInput!): Domain!
+    @auth(role: CONTRIBUTOR)
+
+  """
+  Domain freigeben (TSC-Vote). Nach Freigabe ist die Domain unveränderlich (I-D1).
+  Fehler: CG-E-009 (bereits publiziert), CG-E-006 (I-D1 Verletzung).
+  """
+  publishDomain(domain_id: ID!): Domain!
+    @auth(role: TSC)
+
+  """Neue Mapping-Regel einreichen"""
+  submitMapping(input: SubmitMappingInput!): Mapping!
+    @auth(role: CONTRIBUTOR)
+
+  """Mapping freigeben (TSC-Vote)"""
+  publishMapping(mapping_id: ID!): Mapping!
+    @auth(role: TSC)
+
+  # ── Segments / CGUAS ─────────────────────────────────────────────────────
+
+  """
+  Neues CGUAS-Segment registrieren (Adressraum-Zuteilung).
+  Fehler: CG-E-010.003 SegmentOverlap bei Überschneidung.
+  """
+  createSegment(input: CreateSegmentInput!): Segment!
+    @auth(role: CONTRIBUTOR)
+
+  """
+  Resolver-Konfiguration für ein Segment setzen oder ändern.
+  Setzt resolver_status auf UNVERIFIED.
+  """
+  setSegmentResolver(segment_id: ID!, input: SetResolverInput!): Segment!
+    @auth(role: ADMIN)
+
+  """
+  Resolver testen (nicht-destruktiv).
+  Schreibt an reservierten Test-Offset, verifiziert Integrität, überschreibt mit 0x00.
+  """
+  testSegmentResolver(segment_id: ID!): ResolverTestResult!
+    @auth(role: ADMIN)
+
+  # ── Files / CGFS ─────────────────────────────────────────────────────────
+
+  """
+  CGFS-Datei-Manifest speichern.
+  Fehler: CG-E-003 wenn tai_timestamp_ns außerhalb des TAI-Extents.
+  """
+  saveFileManifest(input: SaveFileManifestInput!): FileManifest!
+    @auth(role: CONTRIBUTOR)
+
+  """
+  Datei logisch löschen (DSGVO Art. 17 Tombstone — I-S1).
+  Setzt deleted_at und deleted_reason. CGFI und content_hash bleiben erhalten.
+  Der Aufrufer muss den Inhalt im Blob-Store separat überschreiben.
+  """
+  deleteFileManifest(cgfi: Hash!, input: DeleteFileManifestInput!): FileManifest!
+    @auth(role: CONTRIBUTOR)
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBSCRIPTION
+# Level 3 Pflicht. Level 2 optional (CG-STD-4100 Kap. 10.1).
+# Transport: graphql-ws über WSS (wss://api.chronogrid.org/v1/graphql/ws)
+# Auth (OP-06 — vorläufig): connection_init payload muss
+#   {"Authorization": "Bearer <jwt>"} enthalten.
+# ─────────────────────────────────────────────────────────────────────────────
+
+type Subscription {
+
+  """
+  Echtzeit-Benachrichtigung bei neuen Zeitpunkten in einer Domain.
+  Nützlich für SIEM-Integration (CG-APP-0900 UC-NIS2-1).
+  """
+  timepointAdded(
+    """Filter auf eine bestimmte Domain. Beispiel: "TAI/v1" """
+    domain: String
+    tags: [String!]
+  ): Timepoint! @auth(role: READER)
+
+  """
+  Echtzeit-Benachrichtigung bei Domain-Publikationen.
+  Nützlich für automatische Registry-Synchronisation.
+  """
+  domainPublished(
+    """Filter auf Stabilitätsstufe. Null = alle Stufen."""
+    stability: Stability
+  ): Domain! @auth(role: READER)
+
+  """Benachrichtigung bei neuem CGUAS-Segment"""
+  segmentCreated(
+    """Filter auf owner_id. Null = alle."""
+    owner_id: String
+  ): Segment! @auth(role: READER)
+
+  """
+  Benachrichtigung bei neuem CGFS-Datei-Manifest.
+  Nützlich für automatische CGFI-Hash-Chain-Validierung.
+  """
+  fileManifestCreated(
+    """Filter auf type_id. Null = alle."""
+    type_id: String
+  ): FileManifest! @auth(role: READER)
+
+  """System-Status-Änderungen (nur Admin)"""
+  healthChanged: Health! @auth(role: ADMIN)
+}

@@ -1,0 +1,1773 @@
+openapi: '3.1.0'
+
+info:
+  title: ChronoGrid Registry API
+  version: '1.0.0'
+  description: |
+    Normative REST-API für ChronoGrid Storage & Registry.
+    Anlage A zu CG-STD-4100 v0.7 — DRAFT April 2026.
+    Diese Spezifikation ist normativ: bei Widersprüchen zwischen
+    CG-STD-4100 Kap. 4 und dieser Anlage hat die Anlage Vorrang.
+    Referenzimplementierung: CG-APP-0700 v0.3 (72/72 Tests, Level 3 KONFORM).
+  contact:
+    name: ChronoGrid Systems
+    url: https://chronogrid.org
+  license:
+    name: See CG-ORG-2100
+    url: https://chronogrid.org/license
+  x-cg-doc-nr: CG-STD-4100-2026
+  x-cg-version: '0.7-DRAFT'
+  x-cg-status: DRAFT
+
+servers:
+  - url: https://api.chronogrid.org/v1
+    description: Production
+  - url: https://sandbox.chronogrid.org/v1
+    description: Sandbox (kein persistenter Storage)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Timepoints
+    description: CGTA-Zeitpunkte speichern, abrufen und konvertieren (CG-STD-4100 Kap. 4.2)
+  - name: Relations
+    description: Allen's Interval Algebra — Relationen berechnen und persistieren (Kap. 4.4)
+  - name: Domains
+    description: Domain-Registry — CTDDL-Definitionen und Mappings (Kap. 4.3)
+  - name: Segments
+    description: CGUAS-Segment-Registry — Adressraum-Verwaltung (Kap. 4.6)
+  - name: Resolver
+    description: Resolver-Konfiguration für physisches Mapping (Kap. 4.8)
+  - name: Files
+    description: CGFS-Datei-Manifeste und DSGVO-Tombstone (Kap. 4.7)
+  - name: Auth
+    description: JWT-Authentifizierung, RBAC, Token-Verwaltung (Kap. 7)
+  - name: Webhooks
+    description: Webhook-Registrierung und -Verwaltung (Kap. 6.5)
+  - name: System
+    description: Health-Check und API-Metadaten
+
+paths:
+
+  # ═══════════════════════════════════════════════════════════════
+  # TIMEPOINTS  (CG-STD-4100 Kap. 4.2)
+  # ═══════════════════════════════════════════════════════════════
+
+  /timepoints:
+    post:
+      tags: [Timepoints]
+      summary: Zeitpunkt speichern (I-S1 — Insert-only)
+      description: |
+        Speichert einen CGTA-Zeitpunkt. Idempotent: bei bekannter MachineID
+        wird 200 zurückgegeben (kein Fehler, kein Duplikat). Verletzt der
+        Request I-S1 oder I-R3, wird CG-E-006 zurückgegeben.
+      operationId: createTimepoint
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimepointRequest'
+            example:
+              cgta: "CG:TAI:1742041937000000000/v1"
+              domain: "TAI"
+              value: "1742041937000000000"
+              version: 1
+      responses:
+        '201':
+          description: Zeitpunkt gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimepointResponse'
+        '200':
+          description: Zeitpunkt bereits vorhanden (idempotent, MachineID bekannt)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimepointResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags: [Timepoints]
+      summary: Zeitpunkte auflisten (gefiltert, paginiert)
+      operationId: listTimepoints
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: domain
+          in: query
+          schema:
+            type: string
+          example: "TAI/v1"
+        - name: component_year
+          in: query
+          schema:
+            type: integer
+          example: 2026
+        - name: after
+          in: query
+          description: Paginierungs-Cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Liste von Zeitpunkten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimepointListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /timepoints/{machine_id}:
+    get:
+      tags: [Timepoints]
+      summary: Einzelnen Zeitpunkt abrufen
+      operationId: getTimepoint
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: machine_id
+          in: path
+          required: true
+          description: SHA-256 MachineID (64 Hex-Zeichen)
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: Zeitpunkt gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimepointResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /timepoints/convert:
+    post:
+      tags: [Timepoints]
+      summary: Zeitpunkt konvertieren (zustandslos)
+      description: |
+        Konvertiert einen CGTA-Zeitpunkt zwischen Domains. Keine Speicherung.
+        Klasse-B-Mappings (relativistisch) erfordern worldline_ref.
+        Chain-Limit: max. 8 Mapping-Schritte (CG-E-005 bei Überschreitung).
+      operationId: convertTimepoint
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertRequest'
+            example:
+              cgta: "CG:Gregorian:2026-04-27T10:30:00Z/v2"
+              target_domain: "TAI/v1"
+              worldline_ref: null
+      responses:
+        '200':
+          description: Konvertierung erfolgreich
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /timepoints/validate:
+    post:
+      tags: [Timepoints]
+      summary: CGTA-String validieren (zustandslos)
+      description: Prüft syntaktische und semantische Korrektheit. Keine Seiteneffekte.
+      operationId: validateTimepoint
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cgta]
+              properties:
+                cgta:
+                  type: string
+                  example: "CG:TAI:1742041937000000000/v1"
+      responses:
+        '200':
+          description: Validierungsergebnis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateResponse'
+
+  /timepoints/batch:
+    post:
+      tags: [Timepoints]
+      summary: Bis zu 1000 Zeitpunkte im Batch speichern
+      description: |
+        Multi-Status Response (207): jeder Eintrag enthält status 201/200/422.
+        Maximale Batch-Größe 1000; bei Überschreitung CG-E-009.003.
+      operationId: batchTimepoints
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timepoints]
+              properties:
+                timepoints:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    $ref: '#/components/schemas/TimepointRequest'
+      responses:
+        '207':
+          description: Multi-Status — je Eintrag ein Statuscode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ═══════════════════════════════════════════════════════════════
+  # RELATIONS  (CG-STD-4100 Kap. 4.4)
+  # ═══════════════════════════════════════════════════════════════
+
+  /relations/compute:
+    post:
+      tags: [Relations]
+      summary: Allen-Relation berechnen (zustandslos)
+      operationId: computeRelation
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationComputeRequest'
+      responses:
+        '200':
+          description: Berechnete Allen-Relation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationComputeResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /relations:
+    post:
+      tags: [Relations]
+      summary: Relation persistieren
+      operationId: createRelation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationComputeRequest'
+      responses:
+        '201':
+          description: Relation gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationResponse'
+
+  /relations/{relation_id}:
+    get:
+      tags: [Relations]
+      summary: Relation abrufen
+      operationId: getRelation
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: relation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Relation gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════════════════════════════════════════════════════
+  # DOMAINS  (CG-STD-4100 Kap. 4.3)
+  # ═══════════════════════════════════════════════════════════════
+
+  /domains:
+    get:
+      tags: [Domains]
+      summary: Alle registrierten Domains auflisten
+      operationId: listDomains
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        '200':
+          description: Domain-Liste
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainListResponse'
+
+    post:
+      tags: [Domains]
+      summary: Neue Domain-Definition einreichen (Draft)
+      operationId: submitDomain
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainRequest'
+      responses:
+        '202':
+          description: Domain eingereicht (Draft, wartet auf TSC-Review)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Domain-Version bereits vorhanden (I-D1)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  /domains/{domain_id}:
+    get:
+      tags: [Domains]
+      summary: Domain-Definition abrufen (CTDDL-JSON)
+      operationId: getDomain
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "TAI/v1"
+      responses:
+        '200':
+          description: Domain-Definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /domains/{domain_id}/publish:
+    post:
+      tags: [Domains]
+      summary: Domain freigeben (TSC-Vote erforderlich)
+      description: |
+        Publiziert eine Draft-Domain. Erfordert TSC-Rolle.
+        Nach Freigabe ist die Domain unveränderlich (I-D1).
+        Kein Update möglich — neue Version erzeugt neuen Datensatz.
+      operationId: publishDomain
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain freigegeben
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Domain bereits freigegeben
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  /domains/{domain_id}/mappings:
+    get:
+      tags: [Domains]
+      summary: Alle Mappings einer Domain auflisten
+      operationId: listDomainMappings
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mapping-Liste
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingListResponse'
+
+    post:
+      tags: [Domains]
+      summary: Neue Mapping-Regel einreichen
+      operationId: submitMapping
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingRequest'
+      responses:
+        '202':
+          description: Mapping eingereicht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  # SEGMENTS / CGUAS  (CG-STD-4100 Kap. 4.6)
+  # ═══════════════════════════════════════════════════════════════
+
+  /segments:
+    post:
+      tags: [Segments]
+      summary: Neues Segment registrieren (Adressraum-Zuteilung)
+      operationId: createSegment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SegmentRequest'
+            example:
+              owner_id: "at.gv.staatsarchiv"
+              parent_id: "at"
+              size_ns: "1000000000000000"
+              level: 4
+      responses:
+        '201':
+          description: Segment registriert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '409':
+          description: Überschneidung mit bestehendem Segment (CG-E-010.003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  /segments/{segment_id}:
+    get:
+      tags: [Segments]
+      summary: Segment-Details abrufen
+      operationId: getSegment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Segment-Details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /segments/{segment_id}/children:
+    get:
+      tags: [Segments]
+      summary: Alle Unter-Segmente auflisten
+      operationId: listSegmentChildren
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Unter-Segmente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  children:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SegmentResponse'
+
+  /segments/resolve/{cgua}:
+    get:
+      tags: [Segments]
+      summary: CGUA-Adresse zu Segment auflösen
+      operationId: resolveCgua
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cgua
+          in: path
+          required: true
+          description: CGUA-Adresse als BigInt-Dezimalstring
+          schema:
+            type: string
+          example: "219847362910000000007234891"
+      responses:
+        '200':
+          description: Segment gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CguaResolveResponse'
+        '404':
+          description: Adresse liegt in keinem Segment (CG-E-010.002)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  # ═══════════════════════════════════════════════════════════════
+  # RESOLVER  (CG-STD-4100 Kap. 4.8)
+  # ═══════════════════════════════════════════════════════════════
+
+  /segments/{segment_id}/resolver:
+    get:
+      tags: [Resolver]
+      summary: Resolver-Konfiguration abrufen
+      description: |
+        resolver_config wird für Aufrufer ohne segment.admin-Rolle durch null ersetzt.
+      operationId: getResolver
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resolver-Konfiguration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolverResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    put:
+      tags: [Resolver]
+      summary: Resolver-Konfiguration setzen oder ändern
+      operationId: putResolver
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolverRequest'
+      responses:
+        '200':
+          description: Resolver-Konfiguration gesetzt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolverResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /segments/{segment_id}/resolver/test:
+    post:
+      tags: [Resolver]
+      summary: Resolver testen (nicht-destruktiv)
+      description: |
+        Schreibt an reservierten Test-Offset und verifiziert Integrität.
+        Produktionsdaten werden nicht berührt.
+      operationId: testResolver
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: segment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resolver-Test erfolgreich
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolverTestResponse'
+        '422':
+          description: Integritätsprüfung fehlgeschlagen (CG-E-011.004)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  # ═══════════════════════════════════════════════════════════════
+  # FILES / CGFS  (CG-STD-4100 Kap. 4.7)
+  # ═══════════════════════════════════════════════════════════════
+
+  /files:
+    post:
+      tags: [Files]
+      summary: CGFS-Datei-Manifest speichern
+      operationId: createFile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileManifestRequest'
+      responses:
+        '201':
+          description: Manifest gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileManifestResponse'
+        '409':
+          description: CGFI bereits vorhanden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CgError'
+
+  /files/{cgfi}:
+    get:
+      tags: [Files]
+      summary: Manifest einer Datei abrufen
+      operationId: getFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cgfi
+          in: path
+          required: true
+          description: SHA-256 CGFI (64 Hex-Zeichen)
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: Manifest gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileManifestResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Files]
+      summary: Datei logisch löschen (DSGVO Art. 17 — Tombstone)
+      description: |
+        Logisches Löschen: setzt deleted_at und deleted_reason.
+        CGFI und content_hash bleiben als Audit-Trail erhalten (I-S1).
+        Der Aufrufer ist für das physische Überschreiben im Blob-Store verantwortlich.
+      operationId: deleteFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cgfi
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deleted_reason]
+              properties:
+                deleted_reason:
+                  type: string
+                  example: "GDPR Art.17 — Nutzerantrag 2026-04-27"
+      responses:
+        '200':
+          description: Tombstone gesetzt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileManifestResponse'
+
+  /files/{cgfi}/versions:
+    get:
+      tags: [Files]
+      summary: Versionsgeschichte einer Datei abrufen
+      operationId: getFileVersions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cgfi
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: Versionsgeschichte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FileManifestResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  # AUTH  (CG-STD-4100 Kap. 7)
+  # ═══════════════════════════════════════════════════════════════
+
+  /auth/token:
+    post:
+      tags: [Auth]
+      summary: JWT anfordern (Client Credentials oder Authorization Code + PKCE)
+      operationId: requestToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials, authorization_code]
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                code:
+                  type: string
+                  description: Authorization Code (für authorization_code grant)
+                code_verifier:
+                  type: string
+                  description: PKCE Code Verifier (RFC 7636)
+      responses:
+        '200':
+          description: JWT ausgestellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: JWT erneuern (Refresh Token — max. 30 Tage, rotierend)
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Neues JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/revoke:
+    post:
+      tags: [Auth]
+      summary: Token widerrufen
+      operationId: revokeToken
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                token_type_hint:
+                  type: string
+                  enum: [access_token, refresh_token]
+      responses:
+        '200':
+          description: Token widerrufen
+
+  /auth/jwks.json:
+    get:
+      tags: [Auth]
+      summary: Öffentliche Signaturschlüssel (JWKS, RFC 7517)
+      description: Key Rotation — neue Schlüssel mind. 24h vor Ablauf publiziert.
+      operationId: getJwks
+      security: []
+      responses:
+        '200':
+          description: JWKS-Dokument
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+
+  /auth/userinfo:
+    get:
+      tags: [Auth]
+      summary: Benutzerinformationen (OpenID Connect UserInfo)
+      operationId: getUserInfo
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: UserInfo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+
+  # ═══════════════════════════════════════════════════════════════
+  # WEBHOOKS  (CG-STD-4100 Kap. 6.5)
+  # ═══════════════════════════════════════════════════════════════
+
+  /webhooks:
+    post:
+      tags: [Webhooks]
+      summary: Webhook registrieren
+      operationId: createWebhook
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRequest'
+      responses:
+        '201':
+          description: Webhook registriert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+
+  /webhooks/{webhook_id}:
+    get:
+      tags: [Webhooks]
+      summary: Webhook-Details abrufen
+      operationId: getWebhook
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook-Details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+
+    put:
+      tags: [Webhooks]
+      summary: Webhook aktualisieren
+      operationId: updateWebhook
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRequest'
+      responses:
+        '200':
+          description: Webhook aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+
+    delete:
+      tags: [Webhooks]
+      summary: Webhook löschen
+      operationId: deleteWebhook
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Webhook gelöscht
+
+  # ═══════════════════════════════════════════════════════════════
+  # SYSTEM
+  # ═══════════════════════════════════════════════════════════════
+
+  /health:
+    get:
+      tags: [System]
+      summary: System-Status (Level 1 Pflicht)
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: System ist betriebsbereit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /openapi.json:
+    get:
+      tags: [System]
+      summary: Diese OpenAPI 3.1 Spezifikation abrufen
+      operationId: getOpenApiSpec
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 JSON
+          content:
+            application/json:
+              schema:
+                type: object
+
+# ═══════════════════════════════════════════════════════════════
+# COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        RS256 oder ES256 JWT (RFC 7519). HS256 ist verboten.
+        Claims: iss, sub, aud="chronogrid-api", exp (max. 1h),
+        iat (CGTA-TAI-Wert), cg_role, optional cg_org.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-ChronoGrid-API-Key
+      description: Nur für Read-Zugriff, rate-limitiert (Reader-Rolle).
+
+  schemas:
+
+    # ── Kern-Typen ─────────────────────────────────────────────
+
+    CgtaString:
+      type: string
+      description: |
+        ChronoGrid Time Address. Syntax: CG:{Domain}:{Wert}/v{n}
+        Zeitwert als Dezimalstring (BigInt-sicher, kein Number).
+      pattern: '^CG:[A-Za-z0-9._:-]+:[0-9]+(/v[0-9]+)?$'
+      example: "CG:TAI:1742041937000000000/v1"
+
+    MachineId:
+      type: string
+      description: SHA-256(DomainName ‖ AbsoluterWert ‖ Version) — 64 Hex-Zeichen.
+      pattern: '^[0-9a-f]{64}$'
+      example: "a7f3c2d1e4b5f6a8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+
+    CgfString:
+      type: string
+      description: CGFI — SHA-256(TAI-ns ‖ ContentHash ‖ Typ-ID ‖ Seq) — 64 Hex-Zeichen.
+      pattern: '^[0-9a-f]{64}$'
+
+    CgError:
+      type: object
+      required: [cg_code, message]
+      properties:
+        cg_code:
+          type: string
+          description: CG-E-XXX.YYY Fehlercode (CG-STD-2100 + CG-STD-4100 Kap. 11)
+          example: "CG-E-001.002"
+        message:
+          type: string
+          example: "Ungültiges CGTA-Format"
+        fatal:
+          type: boolean
+          default: false
+        details:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/CgError'
+
+    # ── Timepoints ─────────────────────────────────────────────
+
+    TimepointRequest:
+      type: object
+      required: [cgta, domain, value, version]
+      properties:
+        cgta:
+          $ref: '#/components/schemas/CgtaString'
+        domain:
+          type: string
+          example: "TAI"
+        value:
+          type: string
+          description: Absoluter Zeitwert als Dezimalstring (BigInt — kein Number).
+          example: "1742041937000000000"
+        version:
+          type: integer
+          minimum: 1
+          example: 1
+        label:
+          type: string
+          description: Optionales Label (field projection, DSGVO P-D3)
+        tags:
+          type: array
+          items:
+            type: string
+
+    TimepointResponse:
+      type: object
+      required: [machine_id, cgta, domain, value, version, created_at]
+      properties:
+        machine_id:
+          $ref: '#/components/schemas/MachineId'
+        cgta:
+          $ref: '#/components/schemas/CgtaString'
+        domain:
+          type: string
+        value:
+          type: string
+          description: BigInt als String
+        version:
+          type: integer
+        created_at:
+          $ref: '#/components/schemas/CgtaString'
+        label:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    TimepointListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimepointResponse'
+        pagination:
+          type: object
+          required: [has_more]
+          properties:
+            next_cursor:
+              type: string
+              nullable: true
+            has_more:
+              type: boolean
+            total_hint:
+              type: integer
+              description: Approximative Gesamtzahl (nicht normativ)
+
+    ConvertRequest:
+      type: object
+      required: [cgta, target_domain]
+      properties:
+        cgta:
+          $ref: '#/components/schemas/CgtaString'
+        target_domain:
+          type: string
+          example: "TAI/v1"
+        worldline_ref:
+          type: string
+          nullable: true
+          description: Pflicht für Klasse-B-Mappings (relativistisch).
+
+    ConvertResponse:
+      type: object
+      required: [source, target, mapping_id, mapping_class]
+      properties:
+        source:
+          type: object
+          properties:
+            cgta:
+              $ref: '#/components/schemas/CgtaString'
+            domain:
+              type: string
+        target:
+          type: object
+          required: [cgta, absolute_value, domain, machine_id]
+          properties:
+            cgta:
+              $ref: '#/components/schemas/CgtaString'
+            absolute_value:
+              type: string
+              description: BigInt als String
+            domain:
+              type: string
+            machine_id:
+              $ref: '#/components/schemas/MachineId'
+        mapping_id:
+          type: string
+          example: "Gregorian/v2->TAI/v1"
+        mapping_class:
+          type: string
+          enum: [A, B]
+          description: "A = linear/piecewise; B = relativistisch (RK45)"
+
+    ValidateResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        domain:
+          type: string
+          nullable: true
+        machine_id:
+          $ref: '#/components/schemas/MachineId'
+        error:
+          $ref: '#/components/schemas/CgError'
+
+    BatchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: integer
+                enum: [200, 201, 422]
+              machine_id:
+                $ref: '#/components/schemas/MachineId'
+              error:
+                $ref: '#/components/schemas/CgError'
+
+    # ── Relations ──────────────────────────────────────────────
+
+    Interval:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          $ref: '#/components/schemas/CgtaString'
+        end:
+          $ref: '#/components/schemas/CgtaString'
+
+    RelationComputeRequest:
+      type: object
+      required: [interval_a, interval_b]
+      properties:
+        interval_a:
+          $ref: '#/components/schemas/Interval'
+        interval_b:
+          $ref: '#/components/schemas/Interval'
+
+    RelationComputeResponse:
+      type: object
+      required: [relation, symbol, description]
+      properties:
+        relation:
+          type: string
+          enum:
+            [precedes, meets, overlaps, finished_by, contains, starts, equals,
+             started_by, during, finishes, overlapped_by, met_by, preceded_by]
+        symbol:
+          type: string
+          example: "o"
+        description:
+          type: string
+
+    RelationResponse:
+      allOf:
+        - $ref: '#/components/schemas/RelationComputeResponse'
+        - type: object
+          properties:
+            relation_id:
+              type: string
+            interval_a:
+              $ref: '#/components/schemas/Interval'
+            interval_b:
+              $ref: '#/components/schemas/Interval'
+            created_at:
+              $ref: '#/components/schemas/CgtaString'
+
+    # ── Domains ────────────────────────────────────────────────
+
+    DomainRequest:
+      type: object
+      required: [name, version, ctddl]
+      properties:
+        name:
+          type: string
+          example: "TAI"
+        version:
+          type: integer
+          minimum: 1
+          example: 1
+        ctddl:
+          type: object
+          description: CTDDL-JSON-Definition (CG-STD-2100 v1.4)
+
+    DomainResponse:
+      type: object
+      required: [domain_id, name, version, status]
+      properties:
+        domain_id:
+          type: string
+          example: "TAI/v1"
+        name:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [draft, published, deprecated]
+        ctddl:
+          type: object
+        integrity_hash:
+          type: string
+          description: SHA-256 der CTDDL-Definition
+        published_at:
+          $ref: '#/components/schemas/CgtaString'
+
+    DomainListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainResponse'
+        total:
+          type: integer
+
+    MappingRequest:
+      type: object
+      required: [source_domain, target_domain, mapping_class, definition]
+      properties:
+        source_domain:
+          type: string
+        target_domain:
+          type: string
+        mapping_class:
+          type: string
+          enum: [A, B]
+        definition:
+          type: object
+          description: Mapping-Algorithmus-Definition
+
+    MappingResponse:
+      type: object
+      properties:
+        mapping_id:
+          type: string
+        source_domain:
+          type: string
+        target_domain:
+          type: string
+        mapping_class:
+          type: string
+          enum: [A, B]
+        status:
+          type: string
+          enum: [draft, published]
+
+    MappingListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MappingResponse'
+
+    # ── Segments / CGUAS ───────────────────────────────────────
+
+    SegmentRequest:
+      type: object
+      required: [owner_id, size_ns]
+      properties:
+        owner_id:
+          type: string
+          example: "at.gv.staatsarchiv"
+        parent_id:
+          type: string
+          nullable: true
+          example: "at"
+        size_ns:
+          type: string
+          description: Segmentgröße in Nanosekunden (BigInt als String)
+          example: "1000000000000000"
+        level:
+          type: integer
+          minimum: 1
+          maximum: 8
+          example: 4
+
+    SegmentResponse:
+      type: object
+      required: [segment_id, start_address, end_address, size_ns, granted_at]
+      properties:
+        segment_id:
+          type: string
+        start_address:
+          type: string
+          description: BigInt als String (0 bis 2⁷⁹−1)
+        end_address:
+          type: string
+          description: BigInt als String
+        size_ns:
+          type: string
+        granted_at:
+          $ref: '#/components/schemas/CgtaString'
+        integrity_hash:
+          type: string
+        cgua_base:
+          $ref: '#/components/schemas/CgtaString'
+        owner_id:
+          type: string
+        parent_id:
+          type: string
+          nullable: true
+        level:
+          type: integer
+
+    CguaResolveResponse:
+      type: object
+      required: [cgua, segment_id, owner_id, local_offset]
+      properties:
+        cgua:
+          $ref: '#/components/schemas/CgtaString'
+        segment_id:
+          type: string
+        owner_id:
+          type: string
+        local_offset:
+          type: string
+          description: Offset innerhalb des Segments (BigInt als String)
+        resolver_url:
+          type: string
+          nullable: true
+          example: "https://archiv.at/cgfs/{offset}"
+
+    # ── Resolver ───────────────────────────────────────────────
+
+    ResolverType:
+      type: string
+      enum: [url, s3, gcs, azure, ipfs, local, custom]
+      description: 7 normative Backend-Typen (CG-STD-4100 Kap. 3.9)
+
+    ResolverRequest:
+      type: object
+      required: [resolver_type, resolver_config]
+      properties:
+        resolver_type:
+          $ref: '#/components/schemas/ResolverType'
+        resolver_config:
+          type: object
+          description: Backend-spezifische Konfiguration
+          example:
+            bucket: "staatsarchiv-cgfs"
+            prefix: "cgfs/"
+            region: "eu-central-1"
+
+    ResolverResponse:
+      type: object
+      required: [segment_id, resolver_type, resolver_status]
+      properties:
+        segment_id:
+          type: string
+        resolver_type:
+          $ref: '#/components/schemas/ResolverType'
+        resolver_config:
+          type: object
+          nullable: true
+          description: "null wenn Aufrufer keine segment.admin-Rolle hat"
+        resolver_status:
+          type: string
+          enum: [verified, unverified, failed]
+        last_tested_at:
+          $ref: '#/components/schemas/CgtaString'
+        last_test_result:
+          type: string
+          enum: [ok, failed]
+          nullable: true
+
+    ResolverTestResponse:
+      type: object
+      required: [status, resolver_type, integrity_check, tested_at]
+      properties:
+        status:
+          type: string
+          enum: [ok, failed]
+        resolver_type:
+          $ref: '#/components/schemas/ResolverType'
+        write_latency_ms:
+          type: integer
+        read_latency_ms:
+          type: integer
+        integrity_check:
+          type: string
+          enum: [passed, failed]
+        tested_at:
+          $ref: '#/components/schemas/CgtaString'
+
+    # ── Files / CGFS ───────────────────────────────────────────
+
+    FileManifestRequest:
+      type: object
+      required: [tai_timestamp_ns, content_hash, type_id]
+      properties:
+        tai_timestamp_ns:
+          type: string
+          description: TAI-Zeitstempel in Nanosekunden (BigInt als String)
+          example: "1742041937000000000"
+        content_hash:
+          type: string
+          description: SHA-256 des Dateiinhalts (64 Hex-Zeichen)
+          pattern: '^[0-9a-f]{64}$'
+        type_id:
+          type: string
+          example: "application/pdf"
+        seq:
+          type: integer
+          default: 0
+        label:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        prev_cgfi:
+          $ref: '#/components/schemas/CgfString'
+
+    FileManifestResponse:
+      type: object
+      required: [cgfi, tai_timestamp_ns, content_hash, type_id, created_at]
+      properties:
+        cgfi:
+          $ref: '#/components/schemas/CgfString'
+        tai_timestamp_ns:
+          type: string
+        content_hash:
+          type: string
+        type_id:
+          type: string
+        seq:
+          type: integer
+        label:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        prev_cgfi:
+          $ref: '#/components/schemas/CgfString'
+        created_at:
+          $ref: '#/components/schemas/CgtaString'
+        deleted_at:
+          $ref: '#/components/schemas/CgtaString'
+        deleted_reason:
+          type: string
+          nullable: true
+
+    # ── Auth ───────────────────────────────────────────────────
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Sekunden bis Ablauf (max. 3600)
+          example: 3600
+        refresh_token:
+          type: string
+          nullable: true
+        scope:
+          type: string
+
+    UserInfoResponse:
+      type: object
+      required: [sub, cg_role]
+      properties:
+        sub:
+          type: string
+        cg_role:
+          type: string
+          enum: [reader, contributor, maintainer, tsc, admin]
+        cg_org:
+          type: string
+          nullable: true
+        iss:
+          type: string
+        aud:
+          type: string
+
+    # ── Webhooks ───────────────────────────────────────────────
+
+    WebhookRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://myapp.example.com/webhooks/chronogrid"
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              [domain.published, domain.deprecated, timepoint.created,
+               segment.created, file.created, file.deleted]
+          minItems: 1
+        secret:
+          type: string
+          description: HMAC-SHA-256 Signaturschlüssel (FIPS 198-1)
+
+    WebhookResponse:
+      type: object
+      required: [webhook_id, url, events, created_at]
+      properties:
+        webhook_id:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        created_at:
+          $ref: '#/components/schemas/CgtaString'
+        last_delivery_at:
+          $ref: '#/components/schemas/CgtaString'
+        last_delivery_status:
+          type: integer
+          nullable: true
+
+    # ── System ─────────────────────────────────────────────────
+
+    HealthResponse:
+      type: object
+      required: [status, version, conformance_level]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unavailable]
+        version:
+          type: string
+          example: "1.0.0"
+        conformance_level:
+          type: integer
+          enum: [1, 2, 3]
+          description: Erreichtes CG-STD-4100 Konformitätslevel
+        storage_region:
+          type: string
+          description: Pflicht für Nicht-EWR-Betrieb (DSGVO P-D4)
+          example: "eu-central-1"
+        engine_version:
+          type: string
+          example: "cg-engine@0.9.0"
+        timestamp:
+          $ref: '#/components/schemas/CgtaString'
+
+  responses:
+    BadRequest:
+      description: Ungültige Eingabe (CG-E-001 bis CG-E-003)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Nicht authentifiziert (CG-E-009.010 — TokenExpired)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Nicht autorisiert — RBAC (CG-E-009.009 — InsufficientRole)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Ressource nicht gefunden (CG-E-009.005)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    UnprocessableEntity:
+      description: |
+        Semantischer Fehler — Mapping-Fehler, Invariantenverletzung,
+        CGTA syntaktisch gültig aber semantisch inkorrekt.
+        (CG-E-002, CG-E-005, CG-E-006, CG-E-009.006)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+# ── x-cg-error-codes ────────────────────────────────────────────
+# Normative Fehlercode-Referenz (CG-STD-2100 + CG-STD-4100 Kap. 11)
+x-cg-error-codes:
+  CG-E-001: SyntaxError          # CTDDL / CGTA syntaktisch ungültig
+  CG-E-002: SemanticError        # CTDDL semantisch inkonsistent
+  CG-E-003: ExtentError          # Wert außerhalb Extent oder BigInt-Overflow (FATAL)
+  CG-E-004: HierarchyError       # Fehler in Hierarchie-Definition
+  CG-E-005: MappingError         # Mapping-Fehler (z.B. Chain-Limit > 8)
+  CG-E-006: InvariantError       # Verletzung einer normativen Invariante
+  CG-E-007: VersionError         # Inkompatible Domain- oder API-Version
+  CG-E-008: ConstraintError      # Verletzung Constraint-Regel
+  CG-E-009: StorageAPIError      # Storage/API-spezifische Fehler (CG-STD-4100)
+  CG-E-010: CGUASError           # Fehler im CGUAS-Adressraum (8 Sub-Codes)
+  CG-E-011: CGFSError            # Fehler im CGFS-Dateisystem (12 Sub-Codes)

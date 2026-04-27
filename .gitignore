@@ -1,0 +1,61 @@
+# =============================================================================
+# ChronoGrid — .gitignore für chronogrid-impl
+# =============================================================================
+# Dokumentation liegt autoritativ in Google Drive (/ChronoGrid/200426).
+# .docx und Binärdateien gehören NICHT ins Code-Repository.
+# =============================================================================
+
+# ChronoGrid-Dokumentation (liegt in Google Drive)
+ChronoGrid-docs/
+*.docx
+*.pdf
+*.pptx
+*.xlsx
+
+# Claude-interne Dateien
+CG-DOC-0000_*.md
+*_Briefing_Claude_*.md
+
+# Node.js
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# TypeScript
+*.tsbuildinfo
+*.js.map
+
+# Umgebungsvariablen (niemals einchecken!)
+.env
+.env.local
+.env.*.local
+*.secret
+
+# Test-Outputs
+coverage/
+.nyc_output/
+test-results/
+*.report.json
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OneDrive-Konfliktdateien
+# (chronogrid-impl liegt auf OneDrive - diese Dateien nicht ins Repo)
+*Konflikt*
