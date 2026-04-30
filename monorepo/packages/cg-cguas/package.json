@@ -1,1 +1,24 @@
-{"name":"cg-cguas","version":"1.0.0","type":"module","exports":{".":{"import":"./src/index.ts"},"./cguas.js":{"import":"./src/cguas.ts"}},"scripts":{"build":"tsc --build"},"dependencies":{"cg-types":"workspace:*","cg-engine":"workspace:*"}}
+{
+    "name":  "cg-cguas",
+    "version":  "1.0.0",
+    "type":  "module",
+    "exports":  {
+                    ".":  {
+                              "import":  "./src/index.ts"
+                          },
+                    "./cguas.js":  {
+                                       "import":  "./src/cguas.ts"
+                                   }
+                },
+    "scripts":  {
+                    "build":  "tsc --build",
+                    "test":  "vitest run"
+                },
+    "dependencies":  {
+                         "cg-engine":  "workspace:*",
+                         "cg-types":  "workspace:*"
+                     },
+    "devDependencies":  {
+                            "vitest":  "^4.1.5"
+                        }
+}
