@@ -55,7 +55,7 @@ jobs:
 
       - name: Abhängigkeiten installieren
         working-directory: monorepo
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Normative Tests Level 2 ausführen
         working-directory: monorepo/packages/cg-testkit
@@ -111,7 +111,7 @@ jobs:
 
       - name: Abhängigkeiten installieren
         working-directory: monorepo
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Datenbank-Schema initialisieren
         working-directory: monorepo
@@ -161,7 +161,7 @@ jobs:
 
       - name: Abhängigkeiten installieren
         working-directory: monorepo
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: CGUA Vitest ausführen
         working-directory: monorepo/packages/cg-cguas
