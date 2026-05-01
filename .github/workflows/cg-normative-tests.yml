@@ -1,0 +1,168 @@
+# CG-APP-0910 — GitHub Action: Normative ChronoGrid Tests
+#
+# Trigger: push + pull_request auf main/develop
+# Level 2: 193 Tests (kein PostgreSQL) — immer
+# Level 3: 215 Tests (mit PostgreSQL) — optional, manuell via workflow_dispatch
+#
+# Normativ referenziert: CG-STD-5100 §4.3 (Konformitätsnachweise)
+# Invarianten geprüft: I-R1, I-R2, I-R3, I-D1, I-S1, I-SEG-1, I-M1, I-M3, I-E1
+
+name: ChronoGrid Normative Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'Konformitätsstufe (2 oder 3)'
+        required: false
+        default: '2'
+        type: choice
+        options: ['2', '3']
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 1: Level 2 — immer, kein PostgreSQL
+  # Abdeckung: T-ENG-*, T-CGUAS-*, T-API-* (mock), T-AUTH-*, T-UC-*
+  # ─────────────────────────────────────────────────────────────────
+  normative-level2:
+    name: 'Normative Tests Level 2 (193 Tests)'
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.level != '3' || github.event_name != 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js ${{ env.NODE_VERSION }} einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: monorepo/pnpm-lock.yaml
+
+      - name: Abhängigkeiten installieren
+        working-directory: monorepo
+        run: pnpm install --frozen-lockfile
+
+      - name: Normative Tests Level 2 ausführen
+        working-directory: monorepo/packages/cg-testkit
+        run: node --import tsx/esm src/cli.ts --level 2
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules'
+
+      - name: Konformitätsbericht ausgeben
+        if: always()
+        working-directory: monorepo/packages/cg-testkit
+        run: node --import tsx/esm src/cli.ts --level 2 --report
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 2: Level 3 — nur via workflow_dispatch mit level=3
+  # Benötigt PostgreSQL 14 für Storage-Layer (CG-STD-4100 Kap. 3)
+  # ─────────────────────────────────────────────────────────────────
+  normative-level3:
+    name: 'Normative Tests Level 3 (215 Tests) + PostgreSQL'
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.level == '3' && github.event_name == 'workflow_dispatch' }}
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_DB: chronogrid_test
+          POSTGRES_USER: cg_user
+          POSTGRES_PASSWORD: cg_test_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js ${{ env.NODE_VERSION }} einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: monorepo/pnpm-lock.yaml
+
+      - name: Abhängigkeiten installieren
+        working-directory: monorepo
+        run: pnpm install --frozen-lockfile
+
+      - name: Datenbank-Schema initialisieren
+        working-directory: monorepo
+        run: pnpm run db:migrate
+        env:
+          DATABASE_URL: postgresql://cg_user:cg_test_secret@localhost:5432/chronogrid_test
+        continue-on-error: true
+
+      - name: Normative Tests Level 3 ausführen
+        working-directory: monorepo/packages/cg-testkit
+        run: node --import tsx/esm src/cli.ts --level 3
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules'
+          DATABASE_URL: postgresql://cg_user:cg_test_secret@localhost:5432/chronogrid_test
+
+      - name: Konformitätsbericht ausgeben
+        if: always()
+        working-directory: monorepo/packages/cg-testkit
+        run: node --import tsx/esm src/cli.ts --level 3 --report
+        env:
+          DATABASE_URL: postgresql://cg_user:cg_test_secret@localhost:5432/chronogrid_test
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 3: Vitest CGUA-Algorithmen (28 Tests, parallel zu Level 2)
+  # Abdeckung: T-ENG-100-107, T-CGUAS-001-003, Determinismus I-R3
+  # ─────────────────────────────────────────────────────────────────
+  cgua-vitest:
+    name: 'CGUA-Algorithmen Vitest (28 Tests)'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js ${{ env.NODE_VERSION }} einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: monorepo/pnpm-lock.yaml
+
+      - name: Abhängigkeiten installieren
+        working-directory: monorepo
+        run: pnpm install --frozen-lockfile
+
+      - name: CGUA Vitest ausführen
+        working-directory: monorepo/packages/cg-cguas
+        run: npx vitest run --globals src/cgua.test.ts
