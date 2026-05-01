@@ -1,18 +1,10 @@
-yamlname: ChronoGrid Normative Tests
+name: ChronoGrid Normative Tests
 
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch:
-    inputs:
-      level:
-        description: 'Level (2 or 3)'
-        required: false
-        default: '2'
-        type: choice
-        options: ['2', '3']
 
 env:
   NODE_VERSION: '22'
@@ -20,9 +12,8 @@ env:
 
 jobs:
   normative-level2:
-    name: 'Level 2 (193 Tests)'
+    name: Level 2 - 193 Tests
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.level != '3' || github.event_name != 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -31,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: pnpm
           cache-dependency-path: monorepo/pnpm-lock.yaml
       - name: Install
         working-directory: monorepo
@@ -41,7 +32,7 @@ jobs:
         run: node --import tsx/esm src/cli.ts --level 2
 
   cgua-vitest:
-    name: 'CGUA Vitest (28 Tests)'
+    name: CGUA Vitest - 28 Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: pnpm
           cache-dependency-path: monorepo/pnpm-lock.yaml
       - name: Install
         working-directory: monorepo
