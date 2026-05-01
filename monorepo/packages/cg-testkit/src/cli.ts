@@ -1,9 +1,9 @@
-import{runTests}from'./runner.js';
+﻿import{runTests}from'./runner.js';
 import{engineTests}from'./suites/t-engine.js';
 import{storageTests}from'./suites/t-storage.js';
 import{authTests}from'./suites/t-auth.js';
 import{apiTests,teardown}from'./suites/t-api.js';
-import{ucTests}from'./suites/t-uc.js';
+import{ucTests}from'./suites/t-uc.js';import{ALL_T_CGUAS}from'./suites/t-cguas.js';
 import{handleGraphQL}from'cg-api/graphql.js';
 import{signPayload,verifySignature}from'cg-api/webhooks.js';
 import{InMemoryTimepointRepository,InMemoryDomainRepository,InMemoryManifestRepository,InMemoryRelationRepository,InMemorySegmentRepository}from'cg-storage/repository.js';
@@ -27,7 +27,7 @@ const sprint7Tests:TestCase[]=[
   {id:'T-S7-007',level:2,description:'Webhook verifySignature korrekt',run:()=>{const b='{"t":1}';return verifySignature('s',b,signPayload('s',b));},expected:true},
   {id:'T-S7-008',level:2,description:'Webhook verifySignature falsch',run:()=>verifySignature('s','b','sha256=bad'),expected:false},
 ];
-const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests];
+const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests,...ALL_T_CGUAS];
 const filtered=allTests.filter(t=>t.level<=level);
 console.log(`\n┌──────────────────────────────────────────────────────────────┐`);
 console.log(`│  ChronoGrid Conformance Testkit — CG-STD-5100 v1.3           │`);

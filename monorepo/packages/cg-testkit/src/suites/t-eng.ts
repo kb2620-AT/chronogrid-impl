@@ -1,4 +1,4 @@
-/**
+﻿/**
  * cg-testkit/src/suites/t-eng.ts
  * T-ENG-01x bis T-ENG-08x — CG-STD-3100 v1.5 Kap. 11.2 (normativ)
  * Alle Testvektoren sind exakt aus der Spezifikation übernommen.
@@ -19,6 +19,7 @@ import {
   gpsNsToTaiNs, utcNsToTaiNs,
 } from 'cg-engine/mapping.js';
 import { Errors } from 'cg-types/errors.js';
+import { CGUAS_MAX, isCGUAValid, cgua_safeAdd, toCGUA, cgua_toCGTA, parseCGTA_CGUAS } from 'cg-cguas/cguas.js';
 
 // ── T-ENG-01x: Encode / Decode (CG-STD-3100 Kap. 11.2) ──────────────────────
 export const T_ENG_01: TestCase[] = [
@@ -531,6 +532,159 @@ export const T_BIG: TestCase[] = [
 ];
 
 // ── Alle T-ENG-Suites zusammenführen ──────────────────────────────────────────
+
+// ===================================================================
+// T-ENG-100-107: CGUA-Arithmetik (CG-STD-3100 v1.5 §11.2 + Anhang A)
+// T-ENG-112-114: semantics-Feld  (CG-STD-3100 v1.5 Anhang A)
+// Determinismus: I-R3             (CG-STD-3100 v1.5 §2.1)
+// ===================================================================
+
+export const T_ENG_CGUA: TestCase[] = [
+  {
+    id: 'T-ENG-100', suite: 'T-ENG', level: 2,
+    description: 'isCGUAValid(0n) -- untere Grenze gueltig',
+    fn: () => isCGUAValid(0n), expected: true,
+  },
+  {
+    id: 'T-ENG-101', suite: 'T-ENG', level: 2,
+    description: 'isCGUAValid(CGUAS_MAX) -- obere Grenze gueltig',
+    fn: () => isCGUAValid(CGUAS_MAX), expected: true,
+  },
+  {
+    id: 'T-ENG-102', suite: 'T-ENG', level: 2,
+    description: 'isCGUAValid(CGUAS_MAX + 1n) wirft Fehler',
+    fn: () => { try { isCGUAValid(CGUAS_MAX + 1n); return false; } catch { return true; } },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-103', suite: 'T-ENG', level: 2,
+    description: 'isCGUAValid(-1n) wirft Fehler',
+    fn: () => { try { isCGUAValid(-1n); return false; } catch { return true; } },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-104', suite: 'T-ENG', level: 2,
+    description: 'cgua_safeAdd: gueltige Addition',
+    fn: () => {
+      const a = 219_847_362_910_000_000_000_000n;
+      const b = 7_234_891n;
+      return cgua_safeAdd(a, b) === a + b;
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-105', suite: 'T-ENG', level: 2,
+    description: 'cgua_safeAdd(CGUAS_MAX, 1n) wirft Overflow FATAL',
+    fn: () => { try { cgua_safeAdd(CGUAS_MAX, 1n); return false; } catch { return true; } },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-105a', suite: 'T-ENG', level: 2,
+    description: 'cgua_safeAdd(CGUAS_MAX - 1n, 2n) wirft Overflow FATAL',
+    fn: () => { try { cgua_safeAdd(CGUAS_MAX - 1n, 2n); return false; } catch { return true; } },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-106', suite: 'T-ENG', level: 2,
+    description: 'toCGUA(100n, 50n) = 150n',
+    fn: () => toCGUA(100n, 50n), expected: 150n,
+  },
+  {
+    id: 'T-ENG-106a', suite: 'T-ENG', level: 2,
+    description: 'toCGUA(0n, 0n) = 0n',
+    fn: () => toCGUA(0n, 0n), expected: 0n,
+  },
+  {
+    id: 'T-ENG-106b', suite: 'T-ENG', level: 2,
+    description: 'toCGUA mit negativem Offset wirft Fehler',
+    fn: () => { try { toCGUA(100n, -1n); return false; } catch { return true; } },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-107', suite: 'T-ENG', level: 2,
+    description: 'cgua_toCGTA: korrekte CGTA-Syntax CG:CGUAS:{addr}/v1',
+    fn: () => {
+      const addr = 219_847_362_910_000_007_234_891n;
+      const cgta = cgua_toCGTA(addr);
+      return cgta === ('CG:CGUAS:' + addr.toString() + '/v1') &&
+             /^CG:CGUAS:\d+\/v1`$/.test(cgta);
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-107a', suite: 'T-ENG', level: 2,
+    description: 'parseCGTA_CGUAS: Roundtrip cgua_toCGTA -> parseCGTA_CGUAS',
+    fn: () => {
+      const orig = 219_847_362_910_000_007_234_891n;
+      return parseCGTA_CGUAS(cgua_toCGTA(orig)) === orig;
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-100x', suite: 'T-ENG', level: 2,
+    description: 'CGUAS_MAX normativ korrekt: 435116774400000 s x 10^9',
+    fn: () => CGUAS_MAX === 435_116_774_400_000n * 1_000_000_000n,
+    expected: true,
+  },
+  {
+    id: 'T-ENG-112', suite: 'T-ENG', level: 2,
+    description: 'semantics:address -- CGTA parsebar (Roundtrip)',
+    fn: () => {
+      const addr = 1_000_000_000_000n;
+      return parseCGTA_CGUAS(cgua_toCGTA(addr)) === addr;
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-113', suite: 'T-ENG', level: 2,
+    description: 'semantics:filetype -- Adresse valide',
+    fn: () => isCGUAValid(5_000_000_000_000_000n),
+    expected: true,
+  },
+  {
+    id: 'T-ENG-114', suite: 'T-ENG', level: 2,
+    description: 'kein semantics-Feld -- CGUA-Arithmetik domain-agnostisch',
+    fn: () => isCGUAValid(1_742_041_937_000_000_000n),
+    expected: true,
+  },
+  {
+    id: 'T-ENG-CGUA-DET-1', suite: 'T-ENG', level: 2,
+    description: 'Determinismus I-R3: isCGUAValid -- 100x identisch',
+    fn: () => Array.from({ length: 100 }, () =>
+      isCGUAValid(219_847_362_910_000_007_234_891n)
+    ).every(v => v === true),
+    expected: true,
+  },
+  {
+    id: 'T-ENG-CGUA-DET-2', suite: 'T-ENG', level: 2,
+    description: 'Determinismus I-R3: cgua_safeAdd -- 100x identisch',
+    fn: () => {
+      const a = 100_000_000_000_000n, b = 7_234_891n, e = a + b;
+      return Array.from({ length: 100 }, () => cgua_safeAdd(a, b)).every(v => v === e);
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-CGUA-DET-3', suite: 'T-ENG', level: 2,
+    description: 'Determinismus I-R3: toCGUA -- 100x identisch',
+    fn: () => {
+      const s = 219_847_362_910_000_000_000_000n, o = 7_234_891n, e = s + o;
+      return Array.from({ length: 100 }, () => toCGUA(s, o)).every(v => v === e);
+    },
+    expected: true,
+  },
+  {
+    id: 'T-ENG-CGUA-DET-4', suite: 'T-ENG', level: 2,
+    description: 'Determinismus I-R3: cgua_toCGTA -- 100x identisch',
+    fn: () => {
+      const addr = 219_847_362_910_000_007_234_891n;
+      const e = 'CG:CGUAS:' + addr.toString() + '/v1';
+      return Array.from({ length: 100 }, () => cgua_toCGTA(addr)).every(v => v === e);
+    },
+    expected: true,
+  },
+];
+
 export const ALL_T_ENG: TestCase[] = [
   ...T_ENG_01, ...T_ENG_02, ...T_ENG_03, ...T_ENG_04,
   ...T_ENG_05, ...T_ENG_06, ...T_ENG_07, ...T_ENG_08,
