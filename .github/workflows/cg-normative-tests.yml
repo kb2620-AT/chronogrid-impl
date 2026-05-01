@@ -153,4 +153,4 @@ jobs:
 
       - name: CGUA Vitest ausführen
         working-directory: monorepo/packages/cg-cguas
-        run: npx vitest run --globals src/cgua.test.ts
+        run: npx vitest run --globals src/cgua.test.ts/
