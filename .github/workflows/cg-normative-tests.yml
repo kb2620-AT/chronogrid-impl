@@ -11,42 +11,160 @@ env:
   PNPM_VERSION: '9'
 
 jobs:
-  normative-level2:
-    name: Level 2 - 193 Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: monorepo/pnpm-lock.yaml
-      - name: Install
-        working-directory: monorepo
-        run: pnpm install --no-frozen-lockfile
-      - name: Run Level 2
-        working-directory: monorepo/packages/cg-testkit
-        run: node --import tsx/esm src/cli.ts --level 2
 
-  cgua-vitest:
-    name: CGUA Vitest - 28 Tests
+  # ── Job 1: Level-3 In-Process (schnelles Tor) ──────────────────────────────
+  # Läuft die vollständige normative Testsuite in-process.
+  # 225 aktive Tests (97 L1 + 96 L2 + 32 L3) + 30 pending-Stubs.
+  # Verwendet den neuen conformance.ts-CLI (Sprint 11-A).
+  normative-level3:
+    name: Level 3 In-Process — 225 Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: monorepo/pnpm-lock.yaml
+
       - name: Install
         working-directory: monorepo
         run: pnpm install --no-frozen-lockfile
-      - name: Run Vitest
+
+      - name: Run Level 3 In-Process
+        working-directory: monorepo
+        run: node --import tsx/esm packages/cg-testkit/src/conformance.ts --level 3 --report
+
+      - name: Upload Conformance Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report-inprocess
+          path: monorepo/conformance-report.json
+          retention-days: 90
+
+  # ── Job 2: CGUA + ARITH Vitest ─────────────────────────────────────────────
+  # Vitest-Suite: 34 CGUA-Tests + 46 ARITH-Tests = 80 Tests gesamt.
+  cgua-vitest:
+    name: CGUA + ARITH Vitest — 80 Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: monorepo/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: monorepo
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run CGUA Vitest
         working-directory: monorepo/packages/cg-cguas
         run: npx vitest run --globals src/cgua.test.ts
+
+      - name: Run ARITH Vitest
+        working-directory: monorepo/packages/cg-engine
+        run: npx vitest run --globals src/cg-zeitarithmetik.test.ts
+
+  # ── Job 3: Black-box API (Docker + PostgreSQL) ─────────────────────────────
+  # Startet die Registry-API gegen eine echte PostgreSQL-Instanz und
+  # prüft die API-Konformität von außen (25 BB-Tests).
+  # Entspricht dem Black-box-Modus für Fremdhersteller-Zertifizierung.
+  black-box-api:
+    name: Black-box API — 25 Tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: normative-level3
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_DB: chronogrid
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: monorepo/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: monorepo
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Deploy DB Schema
+        working-directory: monorepo
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d chronogrid -f packages/cg-storage/src/schema.sql
+
+      - name: Start Registry API
+        working-directory: monorepo
+        env:
+          API_PORT: '3000'
+          API_HOST: '127.0.0.1'
+          STORAGE: postgres
+          PG_HOST: localhost
+          PG_PORT: '5432'
+          PG_DATABASE: chronogrid
+          PG_USER: postgres
+          PG_PASSWORD: postgres
+        run: node --import tsx/esm apps/cg-api/src/server.ts &
+
+      - name: Wait for API ready
+        run: |
+          echo "Waiting for API on http://127.0.0.1:3000/v1/health ..."
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/v1/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "API ready after $i attempts."
+              exit 0
+            fi
+            echo "  Attempt $i: HTTP $STATUS — waiting 1s"
+            sleep 1
+          done
+          echo "API did not become ready in time."
+          exit 1
+
+      - name: Run Black-box Conformance Tests
+        working-directory: monorepo
+        run: >
+          node --import tsx/esm packages/cg-testkit/src/conformance.ts
+          --target http://127.0.0.1:3000
+          --level 3
+          --report
+
+      - name: Upload Black-box Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report-blackbox
+          path: monorepo/conformance-report-blackbox.json
+          retention-days: 90

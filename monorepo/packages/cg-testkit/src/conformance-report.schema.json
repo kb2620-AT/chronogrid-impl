@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chronogrid.at/schemas/conformance-report/v1.0",
+  "title": "ChronoGrid Conformance Report",
+  "description": "Maschinenlesbares Konformitätszertifikat für ChronoGrid-Implementierungen. Normative Grundlage: CG-STD-5100 v1.4 §3.3. Erzeugt von cg-conformance CLI (Sprint 11-A).",
+  "type": "object",
+  "required": [
+    "title", "version", "cgStd", "sprint", "mode", "target",
+    "generatedAt", "conformance", "pending", "results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+
+    "title": {
+      "type": "string",
+      "const": "ChronoGrid Conformance Report",
+      "description": "Fester Dokumententitel zur Identifikation des Report-Formats."
+    },
+
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic-Version der getesteten Referenzimplementierung (cg-engine).",
+      "examples": ["0.9.0", "1.0.0"]
+    },
+
+    "cgStd": {
+      "type": "string",
+      "pattern": "^CG-STD-5100 v\\d+\\.\\d+$",
+      "description": "Version der normativen Testkatalog-Spezifikation.",
+      "examples": ["CG-STD-5100 v1.4"]
+    },
+
+    "sprint": {
+      "type": "string",
+      "description": "Sprint-Bezeichnung zum Zeitpunkt der Zertifikatserstellung.",
+      "examples": ["Sprint 11-A", "Sprint 11-B"]
+    },
+
+    "mode": {
+      "type": "string",
+      "enum": ["in-process", "black-box"],
+      "description": "Ausführungsmodus: 'in-process' = interne Testsuite, 'black-box' = externer REST-Endpoint."
+    },
+
+    "target": {
+      "type": "string",
+      "description": "Ziel der Ausführung: 'in-process' oder eine HTTP(S)-URL beim Black-box-Modus.",
+      "examples": ["in-process", "http://127.0.0.1:3000", "https://api.example.com"]
+    },
+
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 Zeitstempel der Zertifikatserstellung (UTC)."
+    },
+
+    "conformance": {
+      "type": "object",
+      "description": "Aggregiertes Konformitätsergebnis.",
+      "required": ["level", "passed", "failed", "skipped", "total", "compliant"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "integer",
+          "enum": [1, 2, 3],
+          "description": "Geprüfte Konformitätsstufe (CG-STD-5100 §2.2–2.4)."
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Anzahl bestandener Tests."
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Anzahl fehlgeschlagener Tests. Muss 0 sein für compliant=true."
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Anzahl übersprungener Tests (pending-v1.2 oder pending-Sprint-11-B)."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Gesamtanzahl Tests (passed + failed + skipped)."
+        },
+        "compliant": {
+          "type": "boolean",
+          "description": "true wenn failed === 0. Bedingung für Zertifikatsvergabe."
+        }
+      }
+    },
+
+    "pending": {
+      "type": "object",
+      "description": "Aufschlüsselung der übersprungenen Tests nach Implementierungsstand.",
+      "required": ["pending_v12", "pending_sprint_11b", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "pending_v12": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tests ausstehend bis CG-STD-4100 v1.2 (OP-07 WORM, OP-08 Federation)."
+        },
+        "pending_sprint_11b": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tests ausstehend bis Sprint 11-B (RK45, GraphQL Sub, Event-Bus, Audit)."
+        },
+        "details": {
+          "type": "object",
+          "description": "Aufschlüsselung nach Kategorie.",
+          "required": [
+            "worm_oais", "geo_redundancy", "rk45_classb",
+            "graphql_sub", "event_bus_mtls", "anchoring_audit"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "worm_oais":       { "type": "integer", "minimum": 0 },
+            "geo_redundancy":  { "type": "integer", "minimum": 0 },
+            "rk45_classb":     { "type": "integer", "minimum": 0 },
+            "graphql_sub":     { "type": "integer", "minimum": 0 },
+            "event_bus_mtls":  { "type": "integer", "minimum": 0 },
+            "anchoring_audit": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+
+    "results": {
+      "type": "array",
+      "description": "Einzelergebnisse aller ausgeführten Tests.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "level", "passed", "durationMs"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9-]+$",
+            "description": "Normative Test-ID (z.B. T-L3-001, BB-031).",
+            "examples": ["T-L3-001", "BB-031", "T-L1-055"]
+          },
+          "level": {
+            "type": "integer",
+            "enum": [1, 2, 3],
+            "description": "Konformitätsstufe des Tests."
+          },
+          "passed": {
+            "type": "boolean",
+            "description": "true = Test bestanden."
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Ausführungsdauer in Millisekunden."
+          },
+          "error": {
+            "type": "string",
+            "description": "Fehlermeldung bei passed=false. Nur vorhanden wenn Test fehlgeschlagen."
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "certificateType": {
+      "description": "Zertifikatstyp-Klassifikation (nicht im Report-JSON, nur für Dokumentation).",
+      "enum": ["full-certificate", "api-conformance-certificate"]
+    }
+  }
+}
