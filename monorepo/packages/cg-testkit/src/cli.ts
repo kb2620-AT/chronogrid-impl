@@ -1,9 +1,12 @@
-﻿import{runTests}from'./runner.js';
+import{runTests}from'./runner.js';
 import{engineTests}from'./suites/t-engine.js';
 import{storageTests}from'./suites/t-storage.js';
 import{authTests}from'./suites/t-auth.js';
 import{apiTests,teardown}from'./suites/t-api.js';
-import{ucTests}from'./suites/t-uc.js';import{ALL_T_CGUAS}from'./suites/t-cguas.js';
+import{ucTests}from'./suites/t-uc.js';
+import{ALL_T_CGUAS}from'./suites/t-cguas.js';
+import{cosmicTests}from'./suites/t-l3-cosmic.js';
+import{ALL_T_L3_PENDING,PENDING_SUMMARY}from'./suites/t-l3-pending.js';
 import{handleGraphQL}from'cg-api/graphql.js';
 import{signPayload,verifySignature}from'cg-api/webhooks.js';
 import{InMemoryTimepointRepository,InMemoryDomainRepository,InMemoryManifestRepository,InMemoryRelationRepository,InMemorySegmentRepository}from'cg-storage/repository.js';
@@ -27,24 +30,61 @@ const sprint7Tests:TestCase[]=[
   {id:'T-S7-007',level:2,description:'Webhook verifySignature korrekt',run:()=>{const b='{"t":1}';return verifySignature('s',b,signPayload('s',b));},expected:true},
   {id:'T-S7-008',level:2,description:'Webhook verifySignature falsch',run:()=>verifySignature('s','b','sha256=bad'),expected:false},
 ];
-const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests,...ALL_T_CGUAS];
+// skip:true-Tests (t-l3-pending) werden nicht ausgeführt, aber im Report gezählt
+const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests,...ALL_T_CGUAS,...cosmicTests];
+const skipTests=(ALL_T_L3_PENDING as Array<TestCase&{skip?:boolean;skipReason?:string}>).filter(t=>t.skip===true);
 const filtered=allTests.filter(t=>t.level<=level);
+const skippedCount=skipTests.filter(t=>t.level<=level).length;
 console.log(`\n┌──────────────────────────────────────────────────────────────┐`);
-console.log(`│  ChronoGrid Conformance Testkit — CG-STD-5100 v1.3           │`);
-console.log(`│  Sprint 9: UC1-UC5 + Swagger UI + PG-Test + Report           │`);
-console.log(`│  Level: ${level} | Tests: ${String(filtered.length).padEnd(4)} von ${allTests.length}                                │`);
+console.log(`│  ChronoGrid Conformance Testkit — CG-STD-5100 v1.4           │`);
+console.log(`│  Sprint 11-A: Standardisierungsreife                         │`);
+console.log(`│  Level: ${level} | Aktiv: ${String(filtered.length).padEnd(4)} | Skip: ${String(skippedCount).padEnd(4)} | Gesamt: ${allTests.length+skipTests.length}   │`);
 console.log(`└──────────────────────────────────────────────────────────────┘\n`);
+if(skippedCount>0){console.log(`  ⏭  ${skippedCount} pending-Tests übersprungen (${PENDING_SUMMARY.pending_v12} pending-v1.2, ${PENDING_SUMMARY.pending_sprint_11b} pending-Sprint-11-B)\n`);}
 const results=await runTests(allTests,level);
 await teardown();
-if(doReport){const r={title:'ChronoGrid Conformance Report',version:'0.9.0',cgStd:'CG-STD-5100 v1.3',generatedAt:new Date().toISOString(),conformance:{level:3,passed:results.filter(r=>r.passed).length,failed:results.filter(r=>!r.passed).length,total:results.length,compliant:results.every(r=>r.passed)},results:results.map(r=>({id:r.id,level:r.level,passed:r.passed,durationMs:r.durationMs}))};writeFileSync('conformance-report.json',JSON.stringify(r,null,2));console.log('✓ conformance-report.json geschrieben');}
+if(doReport){
+  const r={
+    title:'ChronoGrid Conformance Report',
+    version:'0.9.0',
+    cgStd:'CG-STD-5100 v1.4',
+    sprint:'Sprint 11-A',
+    generatedAt:new Date().toISOString(),
+    conformance:{
+      level:3,
+      passed:results.filter(r=>r.passed).length,
+      failed:results.filter(r=>!r.passed).length,
+      skipped:skippedCount,
+      total:results.length+skippedCount,
+      compliant:results.every(r=>r.passed),
+    },
+    pending:{
+      pending_v12:PENDING_SUMMARY.pending_v12,
+      pending_sprint_11b:PENDING_SUMMARY.pending_sprint_11b,
+      details:{
+        worm_oais:PENDING_SUMMARY.worm_oais,
+        geo_redundancy:PENDING_SUMMARY.geo_redundancy,
+        rk45_classb:PENDING_SUMMARY.rk45_classb,
+        graphql_sub:PENDING_SUMMARY.graphql_sub,
+        event_bus_mtls:PENDING_SUMMARY.event_bus_mtls,
+        anchoring_audit:PENDING_SUMMARY.anchoring_audit,
+      },
+    },
+    results:results.map(r=>({id:r.id,level:r.level,passed:r.passed,durationMs:r.durationMs})),
+  };
+  writeFileSync('conformance-report.json',JSON.stringify(r,null,2));
+  console.log('✓ conformance-report.json geschrieben');
+}
 if(isJson){console.log(JSON.stringify(results,null,2));process.exit(results.some(r=>!r.passed)?1:0);}
 let passed=0,failed=0;
 const byLevel:{[k:number]:{p:number;t:number}}={1:{p:0,t:0},2:{p:0,t:0},3:{p:0,t:0}};
 for(const r of results){const c=r.passed?'\x1b[32m✓\x1b[0m':'\x1b[31m✗\x1b[0m';console.log(`  ${c} [L${r.level}] ${r.id.padEnd(16)} ${r.description.slice(0,48).padEnd(48)} ${r.durationMs}ms`);if(!r.passed&&r.error)console.log(`       └─ ${r.error}`);r.passed?passed++:failed++;byLevel[r.level]!.t++;if(r.passed)byLevel[r.level]!.p++;}
 console.log('\n──────────────────────────────────────────────────────────────');
-console.log(`Tests gesamt:   ${results.length}`);console.log(`Bestanden:      ${passed}`);console.log(`Fehlgeschlagen: ${failed}`);
+console.log(`Tests gesamt:   ${results.length} aktiv + ${skippedCount} pending`);
+console.log(`Bestanden:      ${passed}`);
+console.log(`Fehlgeschlagen: ${failed}`);
 for(const[l,v]of Object.entries(byLevel)){if(Number(l)<=level)console.log(`Level ${l}:        ${v.p}/${v.t}`);}
 const ok=failed===0;
-if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} KONFORM — ${passed}/${results.length} Tests bestanden\x1b[0m`);console.log(`  Sprint 9: UC1-UC5 (${ucTests.length} Tests) | Swagger UI | PG-Test | Conformance Report\n`);}
+if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} KONFORM — ${passed}/${results.length} Tests bestanden\x1b[0m`);console.log(`  Sprint 11-A: L3-A/B neu | ${skippedCount} pending (v1.2+11-B)\n`);}
 else{console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);}
 process.exit(ok?0:1);
