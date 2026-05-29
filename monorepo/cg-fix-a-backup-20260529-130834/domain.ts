@@ -1,6 +1,6 @@
 export type DomainType='linear'|'piecewise-linear'|'nonlinear'|'relativistic'|'discrete';
 export type Granularity='nanosecond'|'microsecond'|'millisecond'|'second'|'minute'|'hour'|'day'|'week'|'month'|'year'|'decade'|'century'|'millennium'|'megayear'|'gigayear';
-export type Semantics='time'|'address'|'filetype'|'relative';
+export type Semantics='time'|'address'|'filetype';
 export type Stability='permanent'|'high'|'medium'|'low';
 export interface Extent{min:string|number;max:string|number;inclusive:boolean;}
 export interface HierarchyEntry{unit:string;factor:number|{type:'variable';rule:string};baseSeconds?:number;}

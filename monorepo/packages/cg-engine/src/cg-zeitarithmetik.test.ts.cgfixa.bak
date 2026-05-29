@@ -280,12 +280,12 @@ describe('T-ARITH-04x: Vergleich (I-R2) und Invarianten', () => {
     const v1 = fromSec(144);
     const v2 = fromSec(144);
     expect(v1.ns).toBe(v2.ns);
-    expect(v1.arithKind).toBe(v2.arithKind);
+    expect(v1.sigma).toBe(v2.sigma);
   });
 
-  it('T-ARITH-046: arithKind=period korrekt gesetzt', () => {
+  it('T-ARITH-046: sigma=period korrekt gesetzt', () => {
     const v = fromSec('1337.759', 'period');
-    expect(v.arithKind).toBe('period');
+    expect(v.sigma).toBe('period');
   });
 
   it('T-ARITH-047: Großer Wert — Alter des Universums (partiell)', () => {
@@ -294,7 +294,7 @@ describe('T-ARITH-04x: Vergleich (I-R2) und Invarianten', () => {
     const yearNs = 31_536_000_000_000_000n; // 1 Jahr in ns
     const v = fromNs(yearNs * 1_000_000n);  // 1 Mio Jahre
     expect(v.ns).toBe(yearNs * 1_000_000n);
-    expect(v.arithKind).toBe('duration');
+    expect(v.sigma).toBe('duration');
   });
 
 });

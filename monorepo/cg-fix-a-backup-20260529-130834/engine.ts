@@ -11,7 +11,7 @@ export function getDomain(n:string,v='1.0'):CTDDLDomain{const d=_reg.get(`${n}@$
 export function listDomainKeys():string[]{return[..._reg.keys()];}
 export function encodeCGTA(c:CGTA):string{return`CG:${c.domain}:${c.value}/v${c.version}`;}
 export function decodeCGTA(raw:string):CGTA{const m=raw.match(/^CG:([^:]+):(-?\d+)\/v(\d+)$/);if(!m)throw Errors.SyntaxError.abnfViolation(`CGTA: ${raw}`);return{domain:m[1]!,value:BigInt(m[2]!),version:Number(m[3]!),timezone:'none'};}
-export function computeMachineId(n:string,v:bigint,ver:string):string{if(!/^[A-Za-z0-9_-]{1,63}$/.test(n))throw Errors.SyntaxError.abnfViolation(`MachineID-Name: ${n}`);return createHash('sha256').update(`${n}:${v}:${ver}`).digest('hex');}
+export function computeMachineId(n:string,v:bigint,ver:string):string{return createHash('sha256').update(`${n}:${v}:${ver}`).digest('hex');}
 export function computeCGFI(t:string,c:string,y:string):string{return createHash('sha256').update(`${t}:${c}:${y}`).digest('hex');}
 export function convertValue(value:bigint,from:string,to:string,max=8):bigint{
   if(from===to)return value;if(max<=0)throw Errors.MappingError.chainTooLong('Chain>8');
@@ -21,7 +21,7 @@ export function convertValue(value:bigint,from:string,to:string,max=8):bigint{
   if(from==='Unix'&&to==='TAI')return utcToTai(value+iso8601ToSeconds('1970-01-01T00:00:00Z'));
   throw Errors.MappingError.targetNotFound(`${from}->${to}`);}
 export function createTimepoint(dn:string,dv:string,value:bigint,labels:Record<string,string>={}):CGTimepoint{
-  const dom=getDomain(dn,dv);if((dom.semantics??'time')==='relative')throw new Error(`CG-E-008 ConstraintError: ${dn}@${dv} (semantics:relative) erhaelt keine Zeitpunkt-MachineID`);let abs:bigint;try{abs=convertValue(value,dn,'TAI');}catch{abs=value;}
+  getDomain(dn,dv);let abs:bigint;try{abs=convertValue(value,dn,'TAI');}catch{abs=value;}
   const machineId=computeMachineId(dn,abs,dv);
   const cgta=encodeCGTA({domain:dn,value,version:Number(dv.split('.')[0]),timezone:'none'});
   return{machine_id:machineId,domain_name:dn,domain_version:dv,absolute_value:abs,cgta,labels,created_at:BigInt(Date.now())*1_000_000n};}

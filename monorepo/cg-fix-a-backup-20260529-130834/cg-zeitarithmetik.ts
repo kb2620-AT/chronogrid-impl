@@ -40,13 +40,13 @@ export class CG_E_008_ConstraintError extends Error {
 
 // ─── Typen ────────────────────────────────────────────────────────────────────
 
-export type ArithKind = 'duration' | 'period';
+export type SigmaClass = 'duration' | 'period';
 export type PrecisionClass = 'P-SEC' | 'P-MS' | 'P-NS' | 'P-PS';
 
 /** Kanonischer ARITH-Zeitwert in Nanosekunden (ℤ∞, immer >= 0) */
 export interface ArithValue {
   readonly ns:         bigint;           // interner ℤ∞-Wert in Nanosekunden
-  readonly arithKind:      ArithKind;       // Semantik-Klasse (duration | period)
+  readonly sigma:      SigmaClass;       // Semantik-Klasse (duration | period)
   readonly precision:  PrecisionClass;   // Auflösungsklasse
   readonly approx?:    ApproximationInfo; // nur bei irrationalen Zahlen
 }
@@ -207,13 +207,13 @@ function applyPrecision(ns: bigint, precision: PrecisionClass): bigint {
  */
 export function fromSec(
   sec: number | string,
-  arithKind: ArithKind = 'duration',
+  sigma: SigmaClass = 'duration',
   precision: PrecisionClass = 'P-NS'
 ): ArithValue {
   const rawNs = secToNs(sec);
   const ns    = applyPrecision(rawNs, precision);
   assertNonNegative(ns, `fromSec(${sec})`);
-  return { ns, arithKind, precision };
+  return { ns, sigma, precision };
 }
 
 /**
@@ -221,13 +221,13 @@ export function fromSec(
  */
 export function fromNs(
   ns: bigint,
-  arithKind: ArithKind = 'duration',
+  sigma: SigmaClass = 'duration',
   precision: PrecisionClass = 'P-NS'
 ): ArithValue {
   assertBigInt(ns, 'fromNs');
   assertNonNegative(ns, 'fromNs');
   const adjusted = applyPrecision(ns, precision);
-  return { ns: adjusted, arithKind, precision };
+  return { ns: adjusted, sigma, precision };
 }
 
 /**
@@ -238,7 +238,7 @@ export function fromNs(
 export function arithIrrational(
   constant: keyof typeof IRRATIONAL_CONSTANTS,
   factorSec: number | bigint = 1,
-  arithKind: ArithKind = 'duration',
+  sigma: SigmaClass = 'duration',
   precision: PrecisionClass = 'P-NS'
 ): ArithValue {
   const c       = IRRATIONAL_CONSTANTS[constant];
@@ -247,7 +247,7 @@ export function arithIrrational(
   assertNonNegative(ns, `arithIrrational(${constant})`);
   return {
     ns: applyPrecision(ns, precision),
-    arithKind,
+    sigma,
     precision,
     approx: {
       source:      c.source,
@@ -335,7 +335,7 @@ function buildISO8601(d: bigint, h: bigint, m: bigint, s: bigint,
 export function add(a: ArithValue, b: ArithValue): ArithResult {
   const resultNs = a.ns + b.ns;
   const precision: PrecisionClass = a.precision === 'P-NS' ? b.precision : a.precision;
-  const value = fromNs(resultNs, a.arithKind, precision);
+  const value = fromNs(resultNs, a.sigma, precision);
   return {
     value,
     decoded: decode(value),
@@ -355,7 +355,7 @@ export function subtract(a: ArithValue, b: ArithValue): ArithResult {
     );
   }
   const resultNs = a.ns - b.ns;
-  const value = fromNs(resultNs, a.arithKind, a.precision);
+  const value = fromNs(resultNs, a.sigma, a.precision);
   return {
     value,
     decoded: decode(value),
@@ -398,14 +398,14 @@ export function multiply(a: ArithValue, factor: bigint | number): ArithResult {
       const fracNs = BigInt(Math.round(fracFactor * Number(a.ns)));
       const resultNs = a.ns * factorNs + fracNs;
       assertNonNegative(resultNs, `multiply(rational, ${factor})`);
-      const value = fromNs(resultNs, a.arithKind, a.precision);
+      const value = fromNs(resultNs, a.sigma, a.precision);
       return { value, decoded: decode(value), operation: `${opStr} ≈ ${resultNs} ns [rational factor]` };
     }
   }
 
   const resultNs = a.ns * factorNs;
   assertNonNegative(resultNs, `multiply(${factor})`);
-  const value = fromNs(resultNs, a.arithKind, a.precision);
+  const value = fromNs(resultNs, a.sigma, a.precision);
   return {
     value,
     decoded: decode(value),
@@ -428,7 +428,7 @@ export function divide(a: ArithValue, divisor: bigint): ArithResult {
   }
   const resultNs = a.ns / divisor;       // BigInt: floor-Division
   const remainder = a.ns % divisor;
-  const value = fromNs(resultNs, a.arithKind, a.precision);
+  const value = fromNs(resultNs, a.sigma, a.precision);
   return {
     value,
     decoded: decode(value),
@@ -444,7 +444,7 @@ export function modulo(a: ArithValue, divisor: bigint): ArithResult {
   assertBigInt(divisor, 'modulo.divisor');
   assertNonZeroDivisor(divisor, 'modulo');
   const resultNs = ((a.ns % divisor) + divisor) % divisor; // immer nicht-negativ
-  const value = fromNs(resultNs, a.arithKind, a.precision);
+  const value = fromNs(resultNs, a.sigma, a.precision);
   return {
     value,
     decoded: decode(value),
@@ -465,7 +465,7 @@ export function power(a: ArithValue, exponent: bigint): ArithResult {
   }
   const resultNs = a.ns ** exponent;
   assertNonNegative(resultNs, `power(${exponent})`);
-  const value = fromNs(resultNs, a.arithKind, a.precision);
+  const value = fromNs(resultNs, a.sigma, a.precision);
   return {
     value,
     decoded: decode(value),
@@ -490,8 +490,8 @@ export function compare(a: ArithValue, b: ArithValue): 'less' | 'equal' | 'great
  * direkt die vollständige Dekodierung zurück.
  * Hauptfunktion für einfache Zeitarithmetik-Abfragen.
  */
-export function compute(sec: number | string, arithKind: ArithKind = 'duration'): DecodedTime {
-  return decode(fromSec(sec, arithKind));
+export function compute(sec: number | string, sigma: SigmaClass = 'duration'): DecodedTime {
+  return decode(fromSec(sec, sigma));
 }
 
 /**
@@ -505,7 +505,7 @@ export function format(v: ArithValue): string {
     `Darst.:    ${d.label_de}`,
     `ISO 8601:  ${d.iso8601}`,
     `CGTA:      ${d.cgta}`,
-    `arith_kind:  ${v.arithKind}`,
+    `σ-Klasse:  ${v.sigma}`,
     `Präzision: ${v.precision}`,
   ];
   if (v.approx) {
