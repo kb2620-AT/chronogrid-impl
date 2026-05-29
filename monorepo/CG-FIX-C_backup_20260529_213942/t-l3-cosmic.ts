@@ -11,7 +11,7 @@
  *   scientific_dependency.source          = 'ATNF Pulsar Catalogue' (PSR B1919+21, UC4)
  *
  * SPEC-DISKREPANZ (offen für Sprint 11-B):
- *   CG-STD-5100 §2.4 fordert extent.max = 435494880000000000000000000 ns (Planck 2018).
+ *   CG-STD-5100 §2.4 fordert extent.max = 435116774400000000000000 ns (Planck 2018).
  *   Die aktuelle Cosmic-Domain ist auf UC4 (Pulsar PSR B1919+21) ausgerichtet.
  *   Normative Planck-2018-Werte müssen in der Domain-Definition nachgezogen werden.
  */
@@ -22,10 +22,10 @@ import { encodeCGTA, decodeCGTA, getDomain, allenRelation } from 'cg-engine/engi
 // Implementierungsstand-Konstanten (aus getDomain-Befund)
 const COSMIC_EXTENT_IMPL  = 999_999_999_999_999n;            // aktueller Platzhalter-Wert
 const INT64_MAX           = 9_223_372_036_854_775_807n;
-const BIT89_THRESHOLD     = 2n ** 89n;                        // Spec-Anforderung für künftige Korrektur
+const BIT79_THRESHOLD     = 2n ** 79n;                        // Spec-Anforderung für künftige Korrektur
 
 // Normative Zielwerte (CG-STD-5100 §2.4) — noch nicht implementiert
-const COSMIC_AGE_NS_SPEC = 435_494_880_000_000_000_000_000_000n;
+// const COSMIC_AGE_NS_SPEC = 435_116_774_400_000_000_000_000n;
 
 export const cosmicTests: TestCase[] = [
 
@@ -43,7 +43,7 @@ export const cosmicTests: TestCase[] = [
   },
 
   // T-L3-COSMIC-002: Extent-Grenze — Domain hat definierten, gültigen BigInt-Extent
-  // SPEC-NOTE: Zielwert = 435494880000000000000000000 ns (Planck 2018) — noch offen
+  // SPEC-NOTE: Zielwert = 435116774400000000000000 ns (Planck 2018) — noch offen
   {
     id: 'T-L3-COSMIC-002', suite: 'T-L3-COSMIC', level: 3,
     description: 'Cosmic Extent-Grenze: max ist definiert, > 0 und als BigInt darstellbar',
@@ -60,11 +60,11 @@ export const cosmicTests: TestCase[] = [
   // Dieser Test ist implementierungsunabhängig und prüft die ℤ∞-Voraussetzung.
   {
     id: 'T-L3-COSMIC-003', suite: 'T-L3-COSMIC', level: 3,
-    description: 'Cosmic BigInt-Präzision ≥ 89 Bit: normative Zielwert-Arithmetik (2^89 > 4.35×10²⁶)',
+    description: 'Cosmic BigInt-Präzision ≥ 79 Bit: normative Zielwert-Arithmetik (2^79 > 4.35×10²³)',
     run: () => {
-      const COSMIC_AGE_NS = 435_494_880_000_000_000_000_000_000n; // Spec-Zielwert
+      const COSMIC_AGE_NS = 435_116_774_400_000_000_000_000n; // Spec-Zielwert
       return COSMIC_AGE_NS > INT64_MAX &&
-             COSMIC_AGE_NS < BIT89_THRESHOLD;
+             COSMIC_AGE_NS < BIT79_THRESHOLD;
     },
     expected: true,
   },

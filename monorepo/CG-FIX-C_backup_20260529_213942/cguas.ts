@@ -4,8 +4,8 @@ import { Errors } from 'cg-types/errors.js';
 
 // ─── Normative Konstante ──────────────────────────────────────────────
 // CG-STD-6100 v0.5 §2.2, CG-STD-3100 v1.5 §11.1 (NEU v1.2)
-// CGUAS_MAX = Cosmic-Age in Nanosekunden (Planck 2018) ≈ 2^89
-export const CGUAS_MAX = BigInt('435494880000000000000000000');
+// CGUAS_MAX = Cosmic-Age in Nanosekunden (Planck 2018) ≈ 2^79
+export const CGUAS_MAX = BigInt('435116774400000000000000');
 export const CGUAS_MIN = BigInt(0);
 
 // ─── Bestehende Typen (unverändert) ───────────────────────────────────

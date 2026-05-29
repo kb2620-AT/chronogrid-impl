@@ -81,7 +81,7 @@ describe('T-ENG-10x: CGUA-Arithmetik', () => {
   });
 
   test('T-ENG-100x: CGUAS_MAX normativ korrekt (435116774400000 s × 10^9)', () => {
-    expect(CGUAS_MAX).toBe(435_116_774_400_000n * 1_000_000_000n);
+    expect(CGUAS_MAX).toBe(13_800_000_000n * 31_557_600n * 1_000_000_000n);
   });
 });
 

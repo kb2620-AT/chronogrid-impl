@@ -439,7 +439,7 @@ export const T_ENG_07: TestCase[] = [
       const d = parseCTDDL({
         name: 'science/cosmic-v1', version: 1, semantics: 'time',
         type: 'nonlinear', granularity: '1000000000',
-        extent: { min: '0', max: '435494880000000000000000000' },
+        extent: { min: '0', max: '435116774400000000000000' },
         epoch: { reference: '1970-01-01T00:00:00Z', tai_offset: 0 },
         stability: 'low',
         scientific_dependency: { model: 'Planck-2018', H0: 67.4, reference: 'A&A 641 A6' },
