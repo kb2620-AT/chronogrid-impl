@@ -1,12 +1,18 @@
-import{createHmac,timingSafeEqual}from'node:crypto';import{Errors}from'cg-types/errors.js';
+import{createHmac,timingSafeEqual,randomBytes}from'node:crypto';import{Errors}from'cg-types/errors.js';
 export type CGRole='admin'|'writer'|'reader';
 export interface JWTPayload{sub:string;role:CGRole;iss?:string;aud?:string;exp?:number;iat?:number;}
 const ROLE_LEVEL:Record<CGRole,number>={admin:3,writer:2,reader:1};
 export function hasRole(a:CGRole,r:CGRole):boolean{return ROLE_LEVEL[a]>=ROLE_LEVEL[r];}
-const JWT_SECRET=process.env['JWT_SECRET']??'cg-dev-secret-change-in-production';
+// FIX-14 (Entscheidung 2): HS256 (symmetrisch). KEIN OAuth 2.0. RS256/ES256 für Föderation = Roadmap (CG-STD-4100 v1.2).
+// Kein hartkodiertes Default-Secret mehr. Produktion: Pflicht-ENV (fail-fast). Dev/Test: ephemeres Zufallssecret pro Prozess
+// (Token werden im selben Prozess ausgestellt und verifiziert → In-Process-Suite bleibt konsistent).
+const JWT_SECRET:string=process.env['JWT_SECRET']??(()=>{
+  if(process.env['NODE_ENV']==='production')throw new Error('[cg-api] FATAL: JWT_SECRET muss in Produktion gesetzt sein (kein Default-Secret).');
+  return randomBytes(32).toString('base64url');
+})();
 const JWT_ISSUER=process.env['JWT_ISSUER']??'chronogrid';
 function sign(d:string,s:string):string{return createHmac('sha256',s).update(d).digest('base64url');}
-function verifySig(d:string,sig:string,s:string):boolean{const e=sign(d,s);try{const a=Buffer.from(e,'utf8'),b=Buffer.from(sig,'utf8');if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=(a[i]!^b[i]!);return diff===0;}catch{return false;}}
+function verifySig(d:string,sig:string,s:string):boolean{const e=sign(d,s);try{const a=Buffer.from(e,'utf8'),b=Buffer.from(sig,'utf8');if(a.length!==b.length)return false;return timingSafeEqual(a,b);}catch{return false;}}
 export function issueJWT(sub:string,role:CGRole,ttl=3600):string{const now=Math.floor(Date.now()/1000);const h=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');const p=Buffer.from(JSON.stringify({sub,role,iss:JWT_ISSUER,aud:'cg-api',iat:now,exp:now+ttl})).toString('base64url');return`${h}.${p}.${sign(`${h}.${p}`,JWT_SECRET)}`;}
 export function verifyJWT(token:string):JWTPayload{const parts=token.split('.');if(parts.length!==3)throw Errors.AuthError.invalidToken('Ungültiges Format');const[h,p,s]=parts as[string,string,string];if(!verifySig(`${h}.${p}`,s,JWT_SECRET))throw Errors.AuthError.invalidToken('Signatur ungültig');let payload:JWTPayload;try{payload=JSON.parse(Buffer.from(p,'base64url').toString('utf8'));}catch{throw Errors.AuthError.invalidToken('Payload nicht parsebar');}const now=Math.floor(Date.now()/1000);if(payload.exp&&payload.exp<now)throw Errors.AuthError.tokenExpired('Abgelaufen');return payload;}
 export function extractBearer(h:string|undefined):string|null{if(!h)return null;const m=h.match(/^Bearer\s+(.+)$/i);return m?m[1]!:null;}
