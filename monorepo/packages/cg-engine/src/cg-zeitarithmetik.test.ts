@@ -119,7 +119,7 @@ describe('T-ARITH-01x: decode — Zeitdarstellung', () => {
 
   it('T-ARITH-019: ISO 8601 für 1 Tag', () => {
     const d = compute(86400);
-    expect(d.iso8601).toBe('P1DT');
+    expect(d.iso8601).toBe('P1D');
   });
 
 });

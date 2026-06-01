@@ -331,7 +331,8 @@ function buildISO8601(d: bigint, h: bigint, m: bigint, s: bigint,
   const sign = negative ? '-' : '';
   let result = `${sign}P`;
   if (d > 0n) result += `${d}D`;
-  result += 'T';
+  const hasTime = h > 0n || m > 0n || (Number(s)+Number(ms)/1000+Number(us)/1000000)>0 || d===0n;
+  if (hasTime) result += 'T';
   if (h > 0n) result += `${h}H`;
   if (m > 0n) result += `${m}M`;
 
