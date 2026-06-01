@@ -5,7 +5,7 @@
   "sprint": "Sprint 11-A",
   "mode": "black-box",
   "target": "http://127.0.0.1:3000",
-  "generatedAt": "2026-05-26T07:03:03.151Z",
+  "generatedAt": "2026-06-01T07:51:32.705Z",
   "conformance": {
     "level": 3,
     "passed": 25,
@@ -31,25 +31,25 @@
       "id": "BB-001",
       "level": 1,
       "passed": true,
-      "durationMs": 5
+      "durationMs": 17
     },
     {
       "id": "BB-002",
       "level": 1,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 3
     },
     {
       "id": "BB-003",
       "level": 1,
       "passed": true,
-      "durationMs": 21
+      "durationMs": 9
     },
     {
       "id": "BB-010",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 3
     },
     {
       "id": "BB-011",
@@ -61,43 +61,43 @@
       "id": "BB-020",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 3
     },
     {
       "id": "BB-021",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 2
     },
     {
       "id": "BB-022",
       "level": 2,
       "passed": true,
-      "durationMs": 5
+      "durationMs": 6
     },
     {
       "id": "BB-030",
       "level": 2,
       "passed": true,
-      "durationMs": 3
+      "durationMs": 20
     },
     {
       "id": "BB-031",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 5
     },
     {
       "id": "BB-032",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 4
     },
     {
       "id": "BB-033",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 21
     },
     {
       "id": "BB-040",
@@ -109,7 +109,7 @@
       "id": "BB-041",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 3
     },
     {
       "id": "BB-042",
@@ -121,7 +121,7 @@
       "id": "BB-050",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 22
     },
     {
       "id": "BB-051",
@@ -133,49 +133,49 @@
       "id": "BB-060",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 10
     },
     {
       "id": "BB-070",
       "level": 2,
       "passed": true,
-      "durationMs": 6
+      "durationMs": 12
     },
     {
       "id": "BB-071",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 3
     },
     {
       "id": "BB-080",
       "level": 2,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 19
     },
     {
       "id": "BB-090",
       "level": 2,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 11
     },
     {
       "id": "BB-091",
       "level": 3,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 18
     },
     {
       "id": "BB-092",
       "level": 3,
       "passed": true,
-      "durationMs": 2
+      "durationMs": 20
     },
     {
       "id": "BB-099",
       "level": 3,
       "passed": true,
-      "durationMs": 1
+      "durationMs": 2
     }
   ]
 }

@@ -32,8 +32,8 @@ param(
   [string]$PgHost       = "localhost",
   [int]   $PgPort       = 5432,
   [string]$PgDatabase   = "chronogrid",
-  [string]$PgUser       = "postgres",
-  [string]$PgPassword   = "postgres",
+  [string]$PgUser       = "cg_user",
+  [string]$PgPassword   = "cg_secret",
   [string]$PgService    = "postgres",
   [switch]$SkipInstall,
   [switch]$SkipBlackBox,
@@ -63,6 +63,46 @@ function Stop-Api {
   if($script:ApiProcess -and -not $script:ApiProcess.HasExited){
     Info "Stoppe Registry-API (PID $($script:ApiProcess.Id))"
     try{ Stop-Process -Id $script:ApiProcess.Id -Force -ErrorAction SilentlyContinue }catch{}
+  }
+}
+
+# FIX: Robuste PostgreSQL-Bereitschaftspruefung via TCP-Verbindungsversuch.
+# docker compose exec setzt unter Windows $LASTEXITCODE nicht zuverlaessig;
+# ein direkter TCP-Connect auf Port 5432 ist plattformunabhaengig und korrekt.
+function Wait-Postgres([string]$PgTcpHost,[int]$Port,[int]$MaxSeconds=60){
+  for($i=1; $i -le $MaxSeconds; $i++){
+    try{
+      $tcp = New-Object System.Net.Sockets.TcpClient
+      $tcp.Connect($PgTcpHost, $Port)
+      $tcp.Close()
+      # TCP offen: PostgreSQL-Prozess laeuft. Kurz warten fuer DB-Init.
+      Start-Sleep -Milliseconds 500
+      return $true
+    }catch{ }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+# FIX: Datenbank anlegen falls nicht vorhanden (erster Lauf / frischer Container).
+# Verwendet docker exec direkt (nicht docker compose exec) um stderr-Warnungen zu vermeiden.
+function Ensure-Database([string]$PgSvc,[string]$User,[string]$Db){
+  # DB wird automatisch durch POSTGRES_DB in docker-compose.yml angelegt.
+  # Diese Funktion prueft nur, ob psql erreichbar ist (Sanity-Check).
+  $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  try {
+    $cid = (docker compose ps -q $PgSvc 2>$null) -join ''
+    if(-not $cid){ throw "Container nicht gefunden fuer Service '$PgSvc'" }
+    $result = (docker exec -i $cid psql -U $User -d $Db -tAc "SELECT 1;" 2>&1) -join ''
+    if($result -match "1"){
+      Info "Datenbank '$Db' erreichbar (User: $User)."
+    } else {
+      Info "Datenbank-Sanity-Check: $result -- fahre fort."
+    }
+  } catch {
+    Info "Ensure-Database Warnung: $($_.Exception.Message) -- fahre fort."
+  } finally {
+    $ErrorActionPreference = $prev
   }
 }
 
@@ -114,25 +154,33 @@ try {
     docker compose up -d $PgService
     if($LASTEXITCODE -ne 0){ throw "docker compose up fehlgeschlagen - laeuft Docker? Servicename '$PgService' korrekt?" }
 
-    Info "Warte auf PostgreSQL-Bereitschaft ..."
-    $pgReady = $false
-    for($i=1; $i -le 30; $i++){
-      docker compose exec -T $PgService pg_isready -U $PgUser 2>$null | Out-Null
-      if($LASTEXITCODE -eq 0){ $pgReady = $true; break }
-      Start-Sleep -Seconds 1
-    }
-    if(-not $pgReady){ throw "PostgreSQL wurde nicht rechtzeitig bereit." }
-    Ok "PostgreSQL bereit"
+    # FIX: TCP-basierter Wait statt pg_isready via docker compose exec
+    Info "Warte auf PostgreSQL TCP-Bereitschaft (max. 60s) ..."
+    $pgReady = Wait-Postgres -PgTcpHost $PgHost -Port $PgPort -MaxSeconds 60
+    if(-not $pgReady){ throw "PostgreSQL wurde nicht rechtzeitig bereit (TCP $PgHost`:$PgPort)." }
+    Ok "PostgreSQL TCP bereit"
+
+    # Kurze Pause: TCP offen bedeutet noch nicht, dass der DB-Cluster Queries akzeptiert
+    Info "Warte auf DB-Cluster-Initialisierung (3s) ..."
+    Start-Sleep -Seconds 3
+
+    # FIX: Datenbank anlegen falls noetig
+    Ensure-Database -PgSvc $PgService -User $PgUser -Db $PgDatabase
 
     Info "Spiele Schema ein (packages\cg-storage\src\schema.sql) ..."
     $schema = Join-Path $MonorepoRoot "packages\cg-storage\src\schema.sql"
-    $env:PGPASSWORD = $PgPassword
-    if(Get-Command psql -ErrorAction SilentlyContinue){
-      psql -h $PgHost -U $PgUser -d $PgDatabase -v ON_ERROR_STOP=1 -f $schema
-    } else {
-      Info "lokales psql nicht gefunden - nutze 'docker compose exec'"
-      Get-Content -Raw $schema | docker compose exec -T $PgService psql -U $PgUser -d $PgDatabase -v ON_ERROR_STOP=1
-    }
+
+    # docker compose ps -q und docker cp/exec direkt (kein docker compose exec -> keine version-Warnung auf stderr)
+    $prev2 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $containerName = (docker compose ps -q $PgService 2>$null) -join ''
+    $ErrorActionPreference = $prev2
+    if(-not $containerName){ throw "Container '$PgService' nicht gefunden nach docker compose up." }
+
+    Info "Kopiere schema.sql in Container ($containerName) ..."
+    docker cp $schema "${containerName}:/tmp/schema.sql"
+    if($LASTEXITCODE -ne 0){ throw "docker cp fehlgeschlagen." }
+
+    docker exec -i $containerName psql -U $PgUser -d $PgDatabase -v ON_ERROR_STOP=1 -f /tmp/schema.sql
     if($LASTEXITCODE -ne 0){ throw "Schema-Deploy fehlgeschlagen." }
     Ok "Schema eingespielt (inkl. Insert-only-Trigger)"
 
