@@ -2,14 +2,19 @@
  * cg-zeitarithmetik.ts
  * ChronoGrid Zeitarithmetik — ℤ∞ BigInt Implementierung
  *
- * Normative Basis: CG-STD-0000 v0.5, CG-STD-3100 v1.5, ARITH Domain v1.0
+ * Normative Basis: CG-STD-0000 v0.8, CG-STD-3100 v1.6, ARITH Domain v1.0
  * Paket: cg-engine (Erweiterung)
  * Autor: Kurt Bauer, Initiator & Hauptautor, ChronoGrid Systems
  * Stand: Mai 2026
  *
  * Alle internen Berechnungen erfolgen als BigInt in Nanosekunden.
  * Kein Float, kein Rundungsfehler, kein stiller Overflow.
- * Invarianten: I-R2 (t >= 0), I-R3 (Determinismus), I-E1 (kein Epoch).
+ * Invarianten: I-R2 (totale Ordnung ℤ∞; duration ≥ 0 als Typ-Constraint),
+ *              I-R3 (Determinismus), I-E1 (kein Epoch).
+ *
+ * ARITH ist UNBOUNDED (CG-STD-3100 v1.6 §8.7): Werte liegen in ℤ∞.
+ * C-ARITH-001 (duration_non_negative) gilt ausschließlich als Typ-Constraint
+ * für arithKind='duration'. Für arithKind='period' sind negative Werte erlaubt.
  */
 
 // ─── Fehlerklassen (CG-E-*) ──────────────────────────────────────────────────
@@ -43,10 +48,13 @@ export class CG_E_008_ConstraintError extends Error {
 export type ArithKind = 'duration' | 'period';
 export type PrecisionClass = 'P-SEC' | 'P-MS' | 'P-NS' | 'P-PS';
 
-/** Kanonischer ARITH-Zeitwert in Nanosekunden (ℤ∞, immer >= 0) */
+/** Kanonischer ARITH-Zeitwert in Nanosekunden (ℤ∞ BigInt).
+ *  duration: ns ≥ 0 (C-ARITH-001 Typ-Constraint)
+ *  period:   ns ∈ ℤ∞ (UNBOUNDED, CG-STD-3100 v1.6 §8.7)
+ */
 export interface ArithValue {
   readonly ns:         bigint;           // interner ℤ∞-Wert in Nanosekunden
-  readonly arithKind:      ArithKind;       // Semantik-Klasse (duration | period)
+  readonly arithKind:  ArithKind;        // Semantik-Klasse (duration | period)
   readonly precision:  PrecisionClass;   // Auflösungsklasse
   readonly approx?:    ApproximationInfo; // nur bei irrationalen Zahlen
 }
@@ -111,14 +119,15 @@ const IRRATIONAL_CONSTANTS = {
 // ─── Guard-Funktionen (Invarianten) ──────────────────────────────────────────
 
 /**
- * I-R2: t >= 0. Negative Zeitdauer ist undefiniert.
- * C-ARITH-001: duration_non_negative
+ * C-ARITH-001: duration_non_negative.
+ * Wird nur für arithKind='duration' aufgerufen.
+ * Für arithKind='period' gilt UNBOUNDED (kein Guard).
  */
-function assertNonNegative(ns: bigint, context: string): void {
+function assertDurationNonNegative(ns: bigint, context: string): void {
   if (ns < 0n) {
     throw new CG_E_003_ExtentError(
       `${context}: Zeitdauer negativ (${ns} ns). ` +
-      `Subtraktion a−b nur erlaubt wenn a >= b. Verletzt I-R2 und C-ARITH-001.`
+      `Für arithKind='duration' muss ns ≥ 0 gelten (C-ARITH-001).`
     );
   }
 }
@@ -151,59 +160,64 @@ function assertNonZeroDivisor(divisor: bigint, context: string): void {
 
 /**
  * Dezimale Sekundenangabe → BigInt Nanosekunden (ℤ∞).
- * Beispiel: 17.123 → 17_123_000_000n
+ * Beispiel: 17.123 → 17_123_000_000n, -1 → -1_000_000_000n
  * KEIN Float: Trennstelle wird als String-Split behandelt, um Rundungsfehler zu vermeiden.
+ * Kein negativer Guard hier — ARITH ist UNBOUNDED. Der Typ-Constraint C-ARITH-001
+ * (duration ≥ 0) wird erst in fromSec/fromNs für arithKind='duration' geprüft.
  */
 export function secToNs(sec: number | string): bigint {
   const s = String(sec).trim();
 
-  // Negativprüfung
-  if (s.startsWith('-')) {
-    throw new CG_E_003_ExtentError(
-      `secToNs(${s}): Negativer Eingabewert. ARITH erlaubt nur t >= 0 (C-ARITH-001).`
-    );
-  }
+  const negative = s.startsWith('-');
+  const abs = negative ? s.slice(1) : s;
 
-  const dotIdx = s.indexOf('.');
+  const dotIdx = abs.indexOf('.');
+  let result: bigint;
   if (dotIdx === -1) {
-    // Ganzzahl: direkt
-    return BigInt(s) * NS_PER_SEC;
+    result = BigInt(abs) * NS_PER_SEC;
+  } else {
+    const intPart  = abs.slice(0, dotIdx);
+    const fracPart = abs.slice(dotIdx + 1).padEnd(9, '0').slice(0, 9);
+    const intNs    = BigInt(intPart) * NS_PER_SEC;
+    const fracNs   = BigInt(fracPart);
+    result = intNs + fracNs;
   }
 
-  const intPart  = s.slice(0, dotIdx);
-  const fracPart = s.slice(dotIdx + 1).padEnd(9, '0').slice(0, 9); // max 9 Stellen = ns
-
-  const intNs  = BigInt(intPart)  * NS_PER_SEC;
-  const fracNs = BigInt(fracPart);
-
-  return intNs + fracNs;
+  return negative ? -result : result;
 }
 
 /**
  * BigInt Nanosekunden → Dezimale Sekundendarstellung (nur für Anzeige).
  */
 export function nsToSecString(ns: bigint): string {
-  const wholeSec = ns / NS_PER_SEC;
-  const remNs    = ns % NS_PER_SEC;
-  if (remNs === 0n) return wholeSec.toString();
-  const fracStr  = remNs.toString().padStart(9, '0').replace(/0+$/, '');
-  return `${wholeSec}.${fracStr}`;
+  const negative  = ns < 0n;
+  const absNs     = negative ? -ns : ns;
+  const wholeSec  = absNs / NS_PER_SEC;
+  const remNs     = absNs % NS_PER_SEC;
+  const sign      = negative ? '-' : '';
+  if (remNs === 0n) return `${sign}${wholeSec}`;
+  const fracStr   = remNs.toString().padStart(9, '0').replace(/0+$/, '');
+  return `${sign}${wholeSec}.${fracStr}`;
 }
 
 /**
  * Anwenden der Präzisionsklasse (Lazy Precision, CG-STD-3100 v1.5 E2).
- * Rundet auf die nächste Granularität der Klasse ab (floor).
+ * Rundet auf die nächste Granularität der Klasse ab (floor, vorzeichenerhaltend).
  */
 function applyPrecision(ns: bigint, precision: PrecisionClass): bigint {
   const gran = PRECISION_NS[precision];
-  return (ns / gran) * gran;
+  if (gran === 1n) return ns;
+  // Vorzeichenerhaltende floor-Division für negative Werte
+  if (ns >= 0n) return (ns / gran) * gran;
+  return -(((-ns) / gran) * gran);
 }
 
 // ─── ArithValue-Konstruktor ───────────────────────────────────────────────────
 
 /**
  * Erstellt einen normativen ArithValue aus einem Sekundenwert.
- * Nimmt einen Number oder String entgegen und konvertiert intern zu BigInt.
+ * Für arithKind='duration': C-ARITH-001 wird geprüft (ns ≥ 0).
+ * Für arithKind='period': UNBOUNDED, negative Werte erlaubt.
  */
 export function fromSec(
   sec: number | string,
@@ -212,12 +226,16 @@ export function fromSec(
 ): ArithValue {
   const rawNs = secToNs(sec);
   const ns    = applyPrecision(rawNs, precision);
-  assertNonNegative(ns, `fromSec(${sec})`);
+  if (arithKind === 'duration') {
+    assertDurationNonNegative(ns, `fromSec(${sec})`);
+  }
   return { ns, arithKind, precision };
 }
 
 /**
  * Erstellt einen ArithValue direkt aus BigInt Nanosekunden.
+ * Für arithKind='duration': C-ARITH-001 wird geprüft (ns ≥ 0).
+ * Für arithKind='period': UNBOUNDED, negative Werte erlaubt.
  */
 export function fromNs(
   ns: bigint,
@@ -225,8 +243,10 @@ export function fromNs(
   precision: PrecisionClass = 'P-NS'
 ): ArithValue {
   assertBigInt(ns, 'fromNs');
-  assertNonNegative(ns, 'fromNs');
   const adjusted = applyPrecision(ns, precision);
+  if (arithKind === 'duration') {
+    assertDurationNonNegative(adjusted, 'fromNs');
+  }
   return { ns: adjusted, arithKind, precision };
 }
 
@@ -244,15 +264,17 @@ export function arithIrrational(
   const c       = IRRATIONAL_CONSTANTS[constant];
   const factor  = typeof factorSec === 'bigint' ? factorSec : BigInt(Math.round(Number(factorSec)));
   const ns      = c.ns * factor;
-  assertNonNegative(ns, `arithIrrational(${constant})`);
+  if (arithKind === 'duration') {
+    assertDurationNonNegative(ns, `arithIrrational(${constant})`);
+  }
   return {
     ns: applyPrecision(ns, precision),
     arithKind,
     precision,
     approx: {
       source:      c.source,
-      error_ns:    c.error_ns * factor,
-      error_ps:    c.error_ps * factor,
+      error_ns:    c.error_ns * (factor < 0n ? -factor : factor),
+      error_ps:    c.error_ps * (factor < 0n ? -factor : factor),
       description: `${c.description} × ${factor}`,
     },
   };
@@ -262,20 +284,16 @@ export function arithIrrational(
 
 /**
  * Dekodiert einen ArithValue in eine menschenlesbare Zeitdarstellung.
- * Normative Formel (CG-APP-0600 §Formeln):
- *   days      = floor(ns / NS_PER_DAY)
- *   hours     = floor((ns mod NS_PER_DAY) / NS_PER_HOUR)
- *   minutes   = floor((ns mod NS_PER_HOUR) / NS_PER_MIN)
- *   seconds   = floor((ns mod NS_PER_MIN) / NS_PER_SEC)
- *   ms        = floor((ns mod NS_PER_SEC) / NS_PER_MS)
- *   us        = floor((ns mod NS_PER_MS) / NS_PER_US)
- *   ns_rem    = ns mod NS_PER_US
+ * Negative Werte (UNBOUNDED / period) werden mit Vorzeichen dekodiert.
+ * Normative Formel (CG-APP-0600 §Formeln) auf |ns| angewandt; Vorzeichen im Label.
  */
 export function decode(v: ArithValue): DecodedTime {
   const { ns } = v;
+  const negative = ns < 0n;
+  const absNs    = negative ? -ns : ns;
 
-  const days         = ns / NS_PER_DAY;
-  const rem_day      = ns % NS_PER_DAY;
+  const days         = absNs / NS_PER_DAY;
+  const rem_day      = absNs % NS_PER_DAY;
   const hours        = rem_day / NS_PER_HOUR;
   const rem_hour     = rem_day % NS_PER_HOUR;
   const minutes      = rem_hour / NS_PER_MIN;
@@ -287,15 +305,15 @@ export function decode(v: ArithValue): DecodedTime {
   const microseconds = rem_ms / NS_PER_US;
   const nanoseconds  = rem_ms % NS_PER_US;
 
-  const label_de = buildLabelDe(days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds);
-  const iso8601  = buildISO8601(days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds);
+  const label_de = buildLabelDe(days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds, negative);
+  const iso8601  = buildISO8601(days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds, negative);
   const cgta     = `CG:ARITH:${ns}/v1`;
 
   return { days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds, label_de, iso8601, cgta };
 }
 
 function buildLabelDe(d: bigint, h: bigint, m: bigint, s: bigint,
-                      ms: bigint, us: bigint, ns: bigint): string {
+                      ms: bigint, us: bigint, ns: bigint, negative: boolean): string {
   const parts: string[] = [];
   if (d > 0n)  parts.push(`${d} Tag${d === 1n ? '' : 'e'}`);
   if (h > 0n)  parts.push(`${h} Std`);
@@ -304,22 +322,22 @@ function buildLabelDe(d: bigint, h: bigint, m: bigint, s: bigint,
   if (ms > 0n) parts.push(`${ms} ms`);
   if (us > 0n) parts.push(`${us} µs`);
   if (ns > 0n) parts.push(`${ns} ns`);
-  return parts.length > 0 ? parts.join(' ') : '0 sec';
+  const base = parts.length > 0 ? parts.join(' ') : '0 sec';
+  return negative ? `-${base}` : base;
 }
 
 function buildISO8601(d: bigint, h: bigint, m: bigint, s: bigint,
-                      ms: bigint, us: bigint, _ns: bigint): string {
-  // ISO 8601 Duration: PT[nH][nM][n.nnnS]
-  let result = 'P';
+                      ms: bigint, us: bigint, _ns: bigint, negative: boolean = false): string {
+  const sign = negative ? '-' : '';
+  let result = `${sign}P`;
   if (d > 0n) result += `${d}D`;
   result += 'T';
   if (h > 0n) result += `${h}H`;
   if (m > 0n) result += `${m}M`;
 
-  // Sekunden inkl. Subsekunden
-  const subSec = Number(ms) / 1000 + Number(us) / 1_000_000;
+  const subSec   = Number(ms) / 1000 + Number(us) / 1_000_000;
   const totalSec = Number(s) + subSec;
-  if (totalSec > 0 || result === 'PT') {
+  if (totalSec > 0 || result === `${sign}PT`) {
     result += `${totalSec.toFixed(totalSec % 1 === 0 ? 0 : 6).replace(/\.?0+$/, '')}S`;
   }
   return result;
@@ -344,17 +362,16 @@ export function add(a: ArithValue, b: ArithValue): ArithResult {
 }
 
 /**
- * Subtraktion: a − b. Nur erlaubt wenn a.ns >= b.ns (C-ARITH-001).
- * DURATION − DURATION = DURATION
+ * Subtraktion: a − b → ℤ∞.
+ * UNBOUNDED: Das Ergebnis kann negativ sein (CG-STD-3100 v1.6 §8.7).
+ * Für arithKind='duration' wird C-ARITH-001 in fromNs durchgesetzt —
+ * d. h. ein negatives Ergebnis wirft CG-E-003, sofern der Aufrufer
+ * nicht explizit arithKind='period' verwendet.
+ * Für arithKind='period' sind negative Ergebnisse vollständig erlaubt.
  */
 export function subtract(a: ArithValue, b: ArithValue): ArithResult {
-  if (a.ns < b.ns) {
-    throw new CG_E_003_ExtentError(
-      `subtract(${a.ns}, ${b.ns}): Ergebnis wäre negativ (${a.ns - b.ns} ns). ` +
-      `Verletzt C-ARITH-001 (duration_non_negative) und I-R2.`
-    );
-  }
   const resultNs = a.ns - b.ns;
+  // fromNs prüft C-ARITH-001 nur für arithKind='duration'
   const value = fromNs(resultNs, a.arithKind, a.precision);
   return {
     value,
@@ -365,8 +382,9 @@ export function subtract(a: ArithValue, b: ArithValue): ArithResult {
 
 /**
  * Multiplikation: DURATION × skalarer Faktor (bigint oder number).
- * Number-Faktoren werden als Ganzzahl × NS_PER_SEC interpretiert (Subsekunden via Dezimal-Konverter).
- * Für rationale Faktoren: multiply(a, BigInt-Faktor) direkt nutzen.
+ * Negativer Faktor ist verboten (C-ARITH-MUL-NEG, CG-E-008) —
+ * dies ist ein Operanden-Constraint, kein UNBOUNDED-Fall.
+ * Number-Faktoren werden als Ganzzahl × NS_PER_SEC interpretiert.
  */
 export function multiply(a: ArithValue, factor: bigint | number): ArithResult {
   let factorNs: bigint;
@@ -376,35 +394,30 @@ export function multiply(a: ArithValue, factor: bigint | number): ArithResult {
     if (factor < 0n) {
       throw new CG_E_008_ConstraintError(
         'C-ARITH-MUL-NEG',
-        `multiply: Negativer Faktor (${factor}) würde Ergebnis negativ machen. Verletzt C-ARITH-001.`
+        `multiply: Negativer Faktor (${factor}) verletzt C-ARITH-MUL-NEG (CG-E-008).`
       );
     }
     factorNs = factor;
     opStr = `${a.ns} × ${factor}`;
   } else {
-    // number-Faktor: Umwandlung über String-Methode (kein Float-Fehler für ganze Zahlen)
     if (factor < 0) {
       throw new CG_E_008_ConstraintError(
         'C-ARITH-MUL-NEG',
-        `multiply: Negativer Faktor (${factor}) würde Ergebnis negativ machen. Verletzt C-ARITH-001.`
+        `multiply: Negativer Faktor (${factor}) verletzt C-ARITH-MUL-NEG (CG-E-008).`
       );
     }
-    // Für Integer-Faktoren: direkt; für rationale: Warnung
     factorNs = BigInt(Math.trunc(factor));
     opStr = `${a.ns} × ${factor}`;
     if (factor !== Math.trunc(factor)) {
-      // rationaler Faktor: Dezimalteil separat behandeln
       const fracFactor = factor - Math.trunc(factor);
       const fracNs = BigInt(Math.round(fracFactor * Number(a.ns)));
       const resultNs = a.ns * factorNs + fracNs;
-      assertNonNegative(resultNs, `multiply(rational, ${factor})`);
       const value = fromNs(resultNs, a.arithKind, a.precision);
       return { value, decoded: decode(value), operation: `${opStr} ≈ ${resultNs} ns [rational factor]` };
     }
   }
 
   const resultNs = a.ns * factorNs;
-  assertNonNegative(resultNs, `multiply(${factor})`);
   const value = fromNs(resultNs, a.arithKind, a.precision);
   return {
     value,
@@ -423,10 +436,10 @@ export function divide(a: ArithValue, divisor: bigint): ArithResult {
   if (divisor < 0n) {
     throw new CG_E_008_ConstraintError(
       'C-ARITH-DIV-NEG',
-      `divide: Negativer Divisor (${divisor}) nicht erlaubt in ARITH (C-ARITH-001).`
+      `divide: Negativer Divisor (${divisor}) nicht erlaubt (CG-E-008).`
     );
   }
-  const resultNs = a.ns / divisor;       // BigInt: floor-Division
+  const resultNs  = a.ns / divisor;
   const remainder = a.ns % divisor;
   const value = fromNs(resultNs, a.arithKind, a.precision);
   return {
@@ -443,7 +456,7 @@ export function divide(a: ArithValue, divisor: bigint): ArithResult {
 export function modulo(a: ArithValue, divisor: bigint): ArithResult {
   assertBigInt(divisor, 'modulo.divisor');
   assertNonZeroDivisor(divisor, 'modulo');
-  const resultNs = ((a.ns % divisor) + divisor) % divisor; // immer nicht-negativ
+  const resultNs = ((a.ns % divisor) + divisor) % divisor;
   const value = fromNs(resultNs, a.arithKind, a.precision);
   return {
     value,
@@ -464,7 +477,6 @@ export function power(a: ArithValue, exponent: bigint): ArithResult {
     );
   }
   const resultNs = a.ns ** exponent;
-  assertNonNegative(resultNs, `power(${exponent})`);
   const value = fromNs(resultNs, a.arithKind, a.precision);
   return {
     value,
@@ -474,7 +486,7 @@ export function power(a: ArithValue, exponent: bigint): ArithResult {
 }
 
 /**
- * Vergleich: a ≤ b (Invariante I-R2: totale Ordnung auf ℤ∞).
+ * Vergleich zweier ARITH-Werte (totale Ordnung auf ℤ∞, I-R2).
  * Gibt eines von: 'less' | 'equal' | 'greater' zurück.
  */
 export function compare(a: ArithValue, b: ArithValue): 'less' | 'equal' | 'greater' {
@@ -483,12 +495,11 @@ export function compare(a: ArithValue, b: ArithValue): 'less' | 'equal' | 'great
   return 'equal';
 }
 
-// ─── Bequemlichkeitsfunktionen (Wrapper für häufige Anwendungsfälle) ──────────
+// ─── Bequemlichkeitsfunktionen ────────────────────────────────────────────────
 
 /**
  * Berechnet einen ArithValue aus einer Sekunden-Zahl und gibt
  * direkt die vollständige Dekodierung zurück.
- * Hauptfunktion für einfache Zeitarithmetik-Abfragen.
  */
 export function compute(sec: number | string, arithKind: ArithKind = 'duration'): DecodedTime {
   return decode(fromSec(sec, arithKind));
@@ -534,6 +545,5 @@ export const ARITH = {
   PHI:       arithIrrational('phi'),
 
   FIBONACCI_F12: fromNs(144n * NS_PER_SEC),   // F(12) = 144 = 12×12
-  PULSAR_PSR_B1919_21: arithIrrational('pi',  // Näherung via Konstante
-    1n, 'period'),                              // Echtwert: fromSec('1.337759')
+  PULSAR_PSR_B1919_21: fromSec('1.337759', 'period'),  // Echtwert (nicht π-Näherung)
 } as const;

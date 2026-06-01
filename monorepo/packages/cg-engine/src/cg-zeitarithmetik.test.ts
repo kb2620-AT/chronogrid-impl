@@ -2,8 +2,8 @@
  * cg-zeitarithmetik.test.ts
  * Normative Testsuite — ChronoGrid Zeitarithmetik (ARITH Domain v1.0)
  *
- * Testbezeichnungen: T-ARITH-001 bis T-ARITH-040
- * Normative Basis: CG-STD-0000, CG-STD-3100, ARITH-v1.ctddl.json
+ * Testbezeichnungen: T-ARITH-001 bis T-ARITH-063
+ * Normative Basis: CG-STD-0000 v0.8, CG-STD-3100 v1.6, ARITH-v1.ctddl.json
  * Paket: cg-testkit
  *
  * Ausführung: pnpm test:arith
@@ -42,8 +42,9 @@ describe('T-ARITH-00x: secToNs — Dezimal → BigInt Nanosekunden', () => {
     expect(secToNs('0.000000001')).toBe(1n);
   });
 
-  it('T-ARITH-006: Negativer Wert wirft CG-E-003 (C-ARITH-001)', () => {
-    expect(() => secToNs('-1')).toThrow(CG_E_003_ExtentError);
+  it('T-ARITH-006: Negativer Wert → -1_000_000_000 ns (UNBOUNDED, kein Fehler in secToNs)', () => {
+    // secToNs ist neutral; C-ARITH-001 wird erst in fromSec/fromNs für duration geprüft.
+    expect(secToNs('-1')).toBe(-1_000_000_000n);
   });
 
   it('T-ARITH-007: 86400 sec → 86_400_000_000_000 ns (1 Tag exakt)', () => {
@@ -148,7 +149,8 @@ describe('T-ARITH-02x: Arithmetische Operationen', () => {
     expect(r.decoded.hours).toBe(1n);
   });
 
-  it('T-ARITH-023: subtract(a, b) mit a < b wirft CG-E-003', () => {
+  it('T-ARITH-023: subtract(duration 60, duration 144) wirft CG-E-003 (C-ARITH-001)', () => {
+    // duration-Typ-Constraint: negatives Ergebnis ist für duration verboten.
     expect(() => subtract(fromSec(60), fromSec(144)))
       .toThrow(CG_E_003_ExtentError);
   });
@@ -165,7 +167,8 @@ describe('T-ARITH-02x: Arithmetische Operationen', () => {
     expect(r.decoded.seconds).toBe(24n);
   });
 
-  it('T-ARITH-026: multiply(negativ) wirft CG-E-008', () => {
+  it('T-ARITH-026: multiply(negativer bigint-Faktor) wirft CG-E-008', () => {
+    // Negativer Faktor = Operanden-Constraint (C-ARITH-MUL-NEG), kein UNBOUNDED-Fall.
     expect(() => multiply(fromSec(100), -1n))
       .toThrow(CG_E_008_ConstraintError);
   });
@@ -188,9 +191,8 @@ describe('T-ARITH-02x: Arithmetische Operationen', () => {
     expect(r.decoded.seconds).toBe(1n);
   });
 
-  it('T-ARITH-030: power(fromNs(60000000000), 2n) = 3600 sec^2 in ns', () => {
-    // 60 sec ^ 2 = 3600 sec² (in ns²: sehr große Zahl, BigInt hält das)
-    const r = power(fromNs(60n), 2n); // 60 ns ^ 2 = 3600 ns
+  it('T-ARITH-030: power(fromNs(60n), 2n) = 3600 ns', () => {
+    const r = power(fromNs(60n), 2n);
     expect(r.value.ns).toBe(3600n);
   });
 
@@ -255,7 +257,6 @@ describe('T-ARITH-04x: Vergleich (I-R2) und Invarianten', () => {
   it('T-ARITH-043: 144 sec Roundtrip: fromSec → decode → ns identisch', () => {
     const v  = fromSec(144);
     const d  = decode(v);
-    // Rückrechnung: days×DAY + hours×HOUR + min×MIN + sec×SEC + ms×MS + us×US + ns
     const reconstructed =
       d.days         * 86_400_000_000_000n +
       d.hours        *  3_600_000_000_000n +
@@ -289,10 +290,8 @@ describe('T-ARITH-04x: Vergleich (I-R2) und Invarianten', () => {
   });
 
   it('T-ARITH-047: Großer Wert — Alter des Universums (partiell)', () => {
-    // 13.8 Mrd. Jahre in Sekunden: 4.354e17
-    // Hier nur Teilwert um Testlaufzeit zu begrenzen
-    const yearNs = 31_536_000_000_000_000n; // 1 Jahr in ns
-    const v = fromNs(yearNs * 1_000_000n);  // 1 Mio Jahre
+    const yearNs = 31_536_000_000_000_000n;
+    const v = fromNs(yearNs * 1_000_000n);
     expect(v.ns).toBe(yearNs * 1_000_000n);
     expect(v.arithKind).toBe('duration');
   });
@@ -303,9 +302,10 @@ describe('T-ARITH-04x: Vergleich (I-R2) und Invarianten', () => {
 
 describe('T-ARITH-05x: Fehlercode-Verhalten', () => {
 
-  it('T-ARITH-050: CG-E-003 hat korrekten code', () => {
+  it('T-ARITH-050: fromSec(-1, duration) wirft CG-E-003 (C-ARITH-001)', () => {
+    // secToNs('-1') selbst wirft nicht; der Guard sitzt in fromSec für duration.
     try {
-      fromSec(-1);
+      fromSec('-1', 'duration');
     } catch (e) {
       expect((e as CG_E_003_ExtentError).code).toBe('CG-E-003');
     }
@@ -319,12 +319,43 @@ describe('T-ARITH-05x: Fehlercode-Verhalten', () => {
     }
   });
 
-  it('T-ARITH-052: subtract negatives Ergebnis → CG-E-003', () => {
+  it('T-ARITH-052: subtract(duration 1, duration 2) → CG-E-003 (C-ARITH-001)', () => {
+    // duration-Typ-Constraint: negatives Ergebnis wirft CG-E-003.
     expect(() => subtract(fromSec(1), fromSec(2))).toThrow(CG_E_003_ExtentError);
   });
 
   it('T-ARITH-053: multiply negativer Faktor → CG-E-008', () => {
     expect(() => multiply(fromSec(60), -5n)).toThrow(CG_E_008_ConstraintError);
+  });
+
+});
+
+// ─── T-ARITH-06x: UNBOUNDED (period) ─────────────────────────────────────────
+
+describe('T-ARITH-06x: UNBOUNDED — period erlaubt negative Werte (CG-STD-3100 v1.6 §8.7)', () => {
+
+  it('T-ARITH-060: secToNs(-1) = -1_000_000_000n (kein Fehler)', () => {
+    expect(secToNs('-1')).toBe(-1_000_000_000n);
+  });
+
+  it('T-ARITH-061: fromSec(-1, period) = -1_000_000_000n (kein Fehler)', () => {
+    const v = fromSec('-1', 'period');
+    expect(v.ns).toBe(-1_000_000_000n);
+    expect(v.arithKind).toBe('period');
+  });
+
+  it('T-ARITH-062: subtract(period 60, period 144) = -84_000_000_000n', () => {
+    const a = fromSec(60,  'period');
+    const b = fromSec(144, 'period');
+    const r = subtract(a, b);
+    expect(r.value.ns).toBe(-84_000_000_000n);
+  });
+
+  it('T-ARITH-063: subtract(fromNs(0n,period), fromNs(1n,period)) = -1n', () => {
+    const a = fromNs(0n, 'period');
+    const b = fromNs(1n, 'period');
+    const r = subtract(a, b);
+    expect(r.value.ns).toBe(-1n);
   });
 
 });
