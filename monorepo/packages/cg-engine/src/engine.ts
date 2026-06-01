@@ -10,7 +10,7 @@ export function registerDomain(d:CTDDLDomain):void{const k=`${d.name}@${d.versio
 export function getDomain(n:string,v='1.0'):CTDDLDomain{const d=_reg.get(`${n}@${v}`);if(!d)throw Errors.VersionError.notFound(`${n}@${v}`);return d;}
 export function listDomainKeys():string[]{return[..._reg.keys()];}
 export function encodeCGTA(c:CGTA):string{return`CG:${c.domain}:${c.value}/v${c.version}`;}
-export function decodeCGTA(raw:string):CGTA{const m=raw.match(/^CG:([^:]+):(-?\d+)\/v(\d+)$/);if(!m)throw Errors.SyntaxError.abnfViolation(`CGTA: ${raw}`);return{domain:m[1]!,value:BigInt(m[2]!),version:Number(m[3]!),timezone:'none'};}
+export function decodeCGTA(raw:string):CGTA{const m=raw.match(/^CG:([^:]+):(-?\d+)(?:\[([A-Za-z\/+\-0-9]+)\])?\/v(\d+)$/);if(!m)throw Errors.SyntaxError.abnfViolation(`CGTA: ${raw}`);return{domain:m[1]!,value:BigInt(m[2]!),version:Number(m[4]!),timezone:(m[3]??'none') as any};}
 export function computeMachineId(n:string,v:bigint,ver:string):string{if(!/^[A-Za-z0-9_-]{1,63}$/.test(n))throw Errors.SyntaxError.abnfViolation(`MachineID-Name: ${n}`);return createHash('sha256').update(`${n}:${v}:${ver}`).digest('hex');}
 export function computeCGFI(t:string,c:string,y:string):string{return createHash('sha256').update(`${t}:${c}:${y}`).digest('hex');}
 export function convertValue(value:bigint,from:string,to:string,max=8):bigint{
@@ -20,11 +20,11 @@ export function convertValue(value:bigint,from:string,to:string,max=8):bigint{
   if(from==='Unix'&&to==='UTC')return value+iso8601ToSeconds('1970-01-01T00:00:00Z');
   if(from==='Unix'&&to==='TAI')return utcToTai(value+iso8601ToSeconds('1970-01-01T00:00:00Z'));
   throw Errors.MappingError.targetNotFound(`${from}->${to}`);}
-export function createTimepoint(dn:string,dv:string,value:bigint,labels:Record<string,string>={}):CGTimepoint{
-  const dom=getDomain(dn,dv);if((dom.semantics??'time')==='relative')throw new Error(`CG-E-008 ConstraintError: ${dn}@${dv} (semantics:relative) erhaelt keine Zeitpunkt-MachineID`);let abs:bigint;try{abs=convertValue(value,dn,'TAI');}catch{abs=value;}
+export function createTimepoint(dn:string,dv:string,value:bigint,labels:Record<string,string>={},createdAt:bigint=BigInt(Date.now())*1_000_000n):CGTimepoint{
+  const dom=getDomain(dn,dv);if((dom.semantics??'time')==='relative')throw new Error(`CG-E-008 ConstraintError: ${dn}@${dv} (semantics:relative) erhaelt keine Zeitpunkt-MachineID`);let abs:bigint;try{abs=convertValue(value,dn,'TAI');}catch(e:any){if(e?.code==='CG-E-005.001')abs=value;else throw e;}
   const machineId=computeMachineId(dn,abs,dv);
   const cgta=encodeCGTA({domain:dn,value,version:Number(dv.split('.')[0]),timezone:'none'});
-  return{machine_id:machineId,domain_name:dn,domain_version:dv,absolute_value:abs,cgta,labels,created_at:BigInt(Date.now())*1_000_000n};}
+  return{machine_id:machineId,domain_name:dn,domain_version:dv,absolute_value:abs,cgta,labels,created_at:createdAt};}
 export interface Interval{start:bigint;end:bigint;}
 export function allenRelation(a:Interval,b:Interval):AllenRelation{
   if(a.end<b.start)return'BEFORE';if(b.end<a.start)return'AFTER';
@@ -34,7 +34,7 @@ export function allenRelation(a:Interval,b:Interval):AllenRelation{
   if(a.end===b.end&&a.start>b.start)return'FINISHES';if(b.end===a.end&&b.start>a.start)return'FINISHED_BY';
   if(a.start>b.start&&a.end<b.end)return'DURING';if(b.start>a.start&&b.end<a.end)return'CONTAINS';
   if(a.start<b.start&&a.end<b.end&&a.end>b.start)return'OVERLAPS';
-  if(b.start<a.start&&b.end<a.end&&b.end>a.start)return'OVERLAPPED_BY';return'OVERLAPS';}
+  if(b.start<a.start&&b.end<a.end&&b.end>a.start)return'OVERLAPPED_BY';if(a.start>=a.end||b.start>=b.end)throw Errors.ConstraintError.mappingConstraintViolated(`invalid interval: a=[,] b=[,]`);throw new Error(`CG-E-006 InvariantError: Allen-Relation nicht klassifizierbar: a=[,] b=[,]`);}
 export function compareValues(a:bigint,b:bigint):-1|0|1{return a<b?-1:a>b?1:0;}
 export function verifyDeterminism(n:string,v:bigint,ver:string):boolean{return computeMachineId(n,v,ver)===computeMachineId(n,v,ver);}
 export function nowTaiNs():bigint{return BigInt(Date.now())*1_000_000n+CURRENT_TAI_MINUS_UTC*1_000_000_000n;}
