@@ -65,7 +65,7 @@ export const T_CGUAS_001: TestCase[] = [
         const r = new SegmentRegistry();
         r.allocate('org.greedy', CGUAS_MAX + 1n);
         return false;
-      } catch { return true; }
+      } catch(e:any) { return e?.code === 'CG-E-010.006'; }
     },
     expected: true,
   },
@@ -79,7 +79,7 @@ export const T_CGUAS_001: TestCase[] = [
         const r = new SegmentRegistry();
         r.allocate('org.a', 0n);
         return false;
-      } catch { return true; }
+      } catch(e:any) { return e?.code === 'CG-E-010.008'; }
     },
     expected: true,
   },
@@ -170,13 +170,13 @@ export const T_CGUAS_003: TestCase[] = [
     id: 'T-CGUAS-003c',
     suite: 'T-CGUAS',
     level: 2,
-    description: 'findSegment: kein Segment vorhanden wirft Fehler (CG-E-010.002)',
+    description: 'findSegment: kein Segment vorhanden wirft Fehler (CG-E-010.001)',
     run: () => {
       try {
         const r = new SegmentRegistry();
         r.findSegment(42n);
         return false;
-      } catch { return true; }
+      } catch(e:any) { return e?.code === 'CG-E-010.001'; }
     },
     expected: true,
   },
@@ -207,7 +207,7 @@ export const T_CGUAS_003: TestCase[] = [
         r.revoke(seg.id);
         r.findSegment(seg.base_address + 1n);
         return false;
-      } catch { return true; }
+      } catch(e:any) { return e?.code === 'CG-E-010.001'; }
     },
     expected: true,
   },
