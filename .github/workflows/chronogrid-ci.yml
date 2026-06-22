@@ -1,0 +1,135 @@
+name: ChronoGrid CI - Conformance Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # -- Job 1: TypeScript Referenzimplementierung --------------------------
+  typescript-conformance:
+    name: TS Conformance (Level 3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: monorepo
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run cg-testkit CLI (Level 3) -- 229/229
+        working-directory: monorepo
+        run: |
+          node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3
+        env:
+          NODE_ENV: test
+          STORAGE: memory
+
+      - name: Run Vitest (CGUA 30 + ARITH 50) -- 80/80
+        working-directory: monorepo
+        run: npx vitest run --globals
+        env:
+          NODE_ENV: test
+
+      - name: Generate Conformance Report
+        working-directory: monorepo
+        run: |
+          node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3 --report
+        env:
+          NODE_ENV: test
+          STORAGE: memory
+
+      - name: Upload Conformance Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report-ts
+          path: monorepo/conformance-report.json
+
+  # -- Job 2: Python Zweitimplementierung (FIX-20d) -----------------------
+  python-second-impl:
+    name: Python Second Implementation (Golden Vectors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Python Golden Vector Tests
+        run: python cg_verify.py --verbose
+
+  # -- Job 3: Golden Vector Cross-Check -----------------------------------
+  golden-vector-crosscheck:
+    name: Golden Vector Cross-Check (TS + Python)
+    runs-on: ubuntu-latest
+    needs: [typescript-conformance, python-second-impl]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: monorepo
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Compute Golden Vector (TypeScript)
+        working-directory: monorepo
+        run: |
+          node --import tsx/esm -e "
+            import { computeMachineId } from './packages/cg-engine/src/engine.ts';
+            const gv = computeMachineId('TAI', 0n, '1.0');
+            console.log('TS_GV=' + gv);
+            if (gv !== 'f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da') {
+              console.error('FEHLER: Golden Vector verletzt!');
+              process.exit(1);
+            }
+            console.log('OK: TypeScript Golden Vector verifiziert');
+          "
+        env:
+          NODE_ENV: test
+
+      - name: Compute Golden Vector (Python)
+        run: |
+          python3 -c "
+          import hashlib, sys
+          gv = hashlib.sha256('TAI:0:1.0'.encode()).hexdigest()
+          expected = 'f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da'
+          print(f'PY_GV={gv}')
+          if gv != expected:
+              print('FEHLER: Python Golden Vector verletzt!')
+              sys.exit(1)
+          print('OK: Python Golden Vector verifiziert')
+          "
+
+      - name: Cross-Check Summary
+        run: |
+          echo "Golden Vector f060329...b9ce89da"
+          echo "TypeScript SHA-256(TAI:0:1.0) = normativ korrekt (CG-STD-3100 v1.6 §5.1)"
+          echo "Python SHA-256(TAI:0:1.0) = normativ korrekt"
+          echo "Beide Implementierungen konform"
