@@ -1,0 +1,160 @@
+# ChronoGrid — Universal Time Addressing Standard (CGTA)
+
+**ChronoGrid** is a formal, domain-aware time addressing standard for heterogeneous computer systems.
+Core object: the **CGTA** (ChronoGrid Time Address) — a 6-tuple `(D, t, z, v, h, σ)` represented as:
+
+```
+CG:{DomainName}:{value}/v{version}
+Example: CG:TAI:1742041937000000000/v1
+```
+
+All time values are integer arithmetic (ℤ∞ / BigInt) — no floating-point, no overflow, no ambiguity.
+
+**Normalization target:** ASI/ON → CEN/CENELEC → ISO TC 154
+
+---
+
+## Project Status
+
+| Component | Status |
+|---|---|
+| Normative specification | 21 documents — 8 CG-STD + 1 CG-ORG + 11 CG-APP (see `/docs`) |
+| Reference implementation | cg-engine v0.9.0 — TypeScript/Node.js/PostgreSQL |
+| Test suite | 229/229 cg-testkit CLI (101 L1 + 96 L2 + 32 L3) + 80/80 Vitest |
+| Conformance certificate | CG-CONF-002 — self-declared (see Limitations below) |
+| External review | ⏳ Pending — outreach to RISC/JKU and TU Wien initiated (June 2026) |
+
+---
+
+## Current Limitations (honest disclosure)
+
+Three open blockers are documented and actively being addressed:
+
+**B-1 — No independent verification yet.**
+All 18 formal assertions in CG-STD-0000 v0.8 are internally elaborated and self-checked.
+External verification by qualified mathematicians/logicians is pending (target: RISC/JKU Linz, TU Wien).
+
+**B-2 — Self-declared conformance certificate.**
+CG-CONF-002 was issued by the same author who wrote the standard and the implementation.
+Institutional independence is the goal of the current academic outreach phase.
+
+**B-3 — Level-3 claim scoped to core paths only.**
+The Level-3 test suite passes on normative core paths (229/229).
+Class-B relativistic mappings (RK45/Runge-Kutta-Fehlberg) are not yet implemented.
+30 test stubs are documented open in v1.2 + Sprint-11B.
+The CLI output "Level-3 KONFORM" means: *Level-3-Suite green (core paths); Class-B/RK45 + 30 stubs documented open.*
+
+---
+
+## Repository Structure
+
+```
+/docs          # All 21 normative specification documents (PDF)
+/specs         # CTDDL domain definitions (JSON + ABNF grammar)
+/packages
+  cg-types/    # Shared types, error codes (CG-E-001…012), DTOs
+  cg-ctddl/    # CG-STD-2100: CTDDL parser and validator
+  cg-engine/   # CG-STD-3100: encode/decode, MachineID, CGFI, ArithChain, Allen
+  cg-cguas/    # CG-STD-6100 Part A: segment logic, CGUA resolver
+  cg-storage/  # CG-STD-4100 Ch. 3: 8 tables, migrations, repository
+  cg-testkit/  # CG-STD-5100: normative test suite (229 tests)
+/apps
+  cg-api/      # CG-STD-4100 Ch. 4–8: HTTP/GraphQL gateway (25 routes)
+/examples      # Use case walkthroughs (ATC, notary, IEC 61850, metrology, QKD)
+```
+
+---
+
+## Quick Start
+
+**Prerequisites:** Node.js ≥ 22, pnpm ≥ 9, PostgreSQL ≥ 14
+
+```bash
+git clone https://github.com/kb2620-AT/chronogrid-impl.git
+cd chronogrid-impl
+pnpm install
+pnpm build
+```
+
+**Run the test suite:**
+```bash
+# Full normative suite (229 tests)
+tsx packages/cg-testkit/src/cli.ts --level 3
+
+# Vitest (80 tests: CGUA + arithmetic)
+npx vitest run --globals
+
+# Golden Vector verification (must equal f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da)
+# SHA-256("TAI:0:1.0")
+```
+
+**Start the API server:**
+```bash
+pnpm --filter cg-api dev
+curl http://localhost:3000/v1/health   # → 200 OK
+```
+
+---
+
+## Architecture Principles
+
+| Principle | Implementation | Normative Basis |
+|---|---|---|
+| No floating-point for time values | `bigint` internally, `string` at API/DB boundaries | CG-STD-3100 §2.6 |
+| Insert-only storage | No UPDATE/DELETE on normative tables | CG-STD-4100 §2.1 (I-S1) |
+| Pure-function engine | No network, no DB, no system clock in engine core | CG-STD-3100 §2.1–2.3 |
+| Deterministic hashes | SHA-256 on canonical serialization (lexicographic key order, no whitespace) | CG-STD-3100 §5.1 (I-R3) |
+| 89-bit address space | CGUA values: 0 to 2⁸⁹−1; overflow → CG-E-010.008 | CG-STD-6100 §3 |
+
+---
+
+## Key Technical Values
+
+| Value | Canonical |
+|---|---|
+| CGUAS_MAX | 435 494 880 000 000 000 000 000 000 ns (~13.787 Gyr, Planck 2018) |
+| Address space | 89-bit (2⁸⁹) |
+| MachineID | SHA-256(name:dec(t):version) — σ-free |
+| CGFI | SHA-256(taiNs:contentHash:typeId) — deterministic, seq-free |
+| Auth | JWT HS256 (RS256/ES256 on roadmap for CG-STD-4100 v1.2) |
+| Golden Vector | SHA-256("TAI:0:1.0") = `f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da` |
+
+---
+
+## Specification Documents
+
+The full normative stack (21 documents) is available in `/docs` and at [chronogrid.at/preview](https://chronogrid.at/preview).
+
+| Layer | Document | Content |
+|---|---|---|
+| 0 — Mathematics | CG-STD-0000 v0.8 | Formal proofs, invariants, BigInt foundations |
+| 1 — Time model | CG-STD-1100 v2.6 + CG-STD-1000 v1.4 | Architecture, CGTA, domains, epoch philosophy |
+| 2 — Language | CG-STD-2100 v1.5 | CTDDL: ABNF grammar, JSON Schema, error codes |
+| 3 — Engine | CG-STD-3100 v1.6 | Algorithms: encode/decode, MachineID, CGFI, ArithChain, Allen |
+| 4 — Storage & API | CG-STD-4100 v1.1 | Data model (7 tables), REST/GraphQL, webhooks, auth |
+| 5 — Address space | CG-STD-6100 v1.1 | CGUAS + CGFS, CGFI, segments, QKD, WORM |
+| 6 — Governance | CG-ORG-2100 v1.6 + CG-STD-5100 v1.4 | Committees, CIP process, certification |
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the Change Integration Process (CIP).
+
+All normative changes require a CIP entry. Bug reports and implementation feedback welcome via Issues.
+
+---
+
+## License
+
+- Source code: [Apache License 2.0](LICENSE-APACHE)
+- Specification documents: [CC BY 4.0](LICENSE-CC)
+- Trademarks: "ChronoGrid" and "CGTA" are trademarks of ChronoGrid Systems, Neunkirchen NÖ, Austria.
+
+---
+
+## Contact
+
+**Kurt Bauer** — Initiator & Lead Author  
+ChronoGrid Systems · Neunkirchen, Niederösterreich, Austria  
+kurt@chronogrid.at · [chronogrid.at](https://chronogrid.at/preview)
