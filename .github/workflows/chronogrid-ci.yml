@@ -69,6 +69,7 @@ jobs:
           python-version: '3.11'
 
       - name: Run Python Golden Vector Tests
+        working-directory: ${{ github.workspace }}
         run: python cg_verify.py --verbose
 
   # -- Job 3: Golden Vector Cross-Check -----------------------------------
