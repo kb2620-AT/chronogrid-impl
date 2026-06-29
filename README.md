@@ -149,7 +149,7 @@ All normative changes require a CIP entry. Bug reports and implementation feedba
 
 - Source code: [Apache License 2.0](LICENSE-APACHE)
 - Specification documents: [CC BY 4.0](LICENSE-CC)
-- Trademarks: "ChronoGrid" and "CGTA" are trademarks of ChronoGrid Systems, Neunkirchen NÖ, Austria.
+- Trademarks: "ChronoGrid" and "CGTA" are trademark designations of ChronoGrid Systems, Neunkirchen NÖ, Austria.
 
 ---
 
