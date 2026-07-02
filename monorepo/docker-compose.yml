@@ -5,7 +5,7 @@ services:
     container_name: cg-postgres
     environment: {POSTGRES_DB: chronogrid, POSTGRES_USER: cg_user, POSTGRES_PASSWORD: cg_secret}
     ports: ["5432:5432"]
-    volumes: [cg-pg-data:/var/lib/postgresql/data,"./packages/cg-storage/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql"]
+    volumes: [cg-pg-data:/var/lib/postgresql/data,"./packages/cg-storage/src/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql"]
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: cg-pgadmin

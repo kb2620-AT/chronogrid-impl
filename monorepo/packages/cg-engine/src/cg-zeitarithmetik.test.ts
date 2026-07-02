@@ -179,9 +179,10 @@ describe('T-ARITH-02x: Arithmetische Operationen', () => {
     expect(r.decoded.minutes).toBe(15n);
   });
 
-  it('T-ARITH-028: divide durch 0 wirft CG-E-008', () => {
+  it('T-ARITH-028: divide durch 0 wirft CG-E-003 FATAL (§8.7.7)', () => {
+    // CG-E-003 FATAL gemäß CG-STD-3100 §8.7.7 (Entscheidung E-1=a)
     expect(() => divide(fromSec(100), 0n))
-      .toThrow(CG_E_008_ConstraintError);
+      .toThrow(CG_E_003_ExtentError);
   });
 
   it('T-ARITH-029: modulo(3661, 3600n) = 61 sec = 1min 1sec', () => {
@@ -311,11 +312,12 @@ describe('T-ARITH-05x: Fehlercode-Verhalten', () => {
     }
   });
 
-  it('T-ARITH-051: CG-E-008 bei Division durch 0', () => {
+  it('T-ARITH-051: CG-E-003 FATAL bei Division durch 0 (§8.7.7)', () => {
+    // CG-E-003 FATAL gemäß CG-STD-3100 §8.7.7 (Entscheidung E-1=a)
     try {
       divide(fromSec(100), 0n);
     } catch (e) {
-      expect((e as CG_E_008_ConstraintError).code).toBe('CG-E-008');
+      expect((e as CG_E_003_ExtentError).code).toBe('CG-E-003');
     }
   });
 

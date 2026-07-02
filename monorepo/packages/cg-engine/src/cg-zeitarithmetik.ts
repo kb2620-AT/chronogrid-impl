@@ -149,9 +149,9 @@ function assertBigInt(val: unknown, context: string): asserts val is bigint {
 /** Division durch 0 ist verboten (C-ARITH-DIV0) */
 function assertNonZeroDivisor(divisor: bigint, context: string): void {
   if (divisor === 0n) {
-    throw new CG_E_008_ConstraintError(
-      'C-ARITH-DIV0',
-      `${context}: Division durch 0 ist mathematisch undefiniert.`
+    // CG-E-003 FATAL gemäß CG-STD-3100 §8.7.7 (Entscheidung E-1=a)
+    throw new CG_E_003_ExtentError(
+      `${context}: Division durch 0 ist mathematisch undefiniert (CG-E-003 FATAL, §8.7.7).`
     );
   }
 }
@@ -472,9 +472,9 @@ export function modulo(a: ArithValue, divisor: bigint): ArithResult {
  */
 export function power(a: ArithValue, exponent: bigint): ArithResult {
   if (exponent < 0n) {
-    throw new CG_E_008_ConstraintError(
-      'C-ARITH-POW-NEG',
-      `power: Negativer Exponent (${exponent}) nicht erlaubt (Ergebnis wäre Bruch).`
+    // CG-E-003 FATAL gemäß CG-STD-3100 §8.7.7 (Entscheidung E-1=a)
+    throw new CG_E_003_ExtentError(
+      `power: Negativer Exponent (${exponent}) nicht erlaubt (Ergebnis wäre Bruch) — CG-E-003 FATAL (§8.7.7).`
     );
   }
   const resultNs = a.ns ** exponent;
@@ -548,3 +548,69 @@ export const ARITH = {
   FIBONACCI_F12: fromNs(144n * NS_PER_SEC),   // F(12) = 144 = 12×12
   PULSAR_PSR_B1919_21: fromSec('1.337759', 'period'),  // Echtwert (nicht π-Näherung)
 } as const;
+
+// ─── executeArithChain (normative Schnittstelle, CG-STD-3100 §8.7) ───────────
+
+/** Einzelner Schritt in einer ArithChain */
+export interface ArithChainStep {
+  readonly op:      'add' | 'subtract' | 'multiply' | 'divide' | 'modulo' | 'power';
+  readonly operand: bigint;    // zweiter Operand (Faktor, Divisor, Exponent)
+}
+
+/** Normative ArithChain-Struktur (CG-STD-3100 §8.7) */
+export interface ArithChain {
+  readonly initial:  ArithValue;        // Startwert
+  readonly steps:    ArithChainStep[];  // Operationsfolge
+}
+
+/** Ergebnis einer ArithChain-Ausführung */
+export interface ArithChainResult {
+  readonly value:       ArithValue;
+  readonly decoded:     DecodedTime;
+  readonly stepResults: ArithResult[];  // Zwischenergebnisse je Schritt
+}
+
+/**
+ * executeArithChain — normative Einstiegsfunktion für ArithChain-Ausführung.
+ * Normative Grundlage: CG-STD-3100 §8.7 (Entscheidung E-1=a).
+ *
+ * Fehlerverhalten gemäß §8.7.7:
+ *   - divide/modulo durch 0          → CG-E-003 FATAL
+ *   - power mit negativem Exponent   → CG-E-003 FATAL
+ *   - duration-Typ-Constraint negativ → CG-E-003 (C-ARITH-001)
+ *   - multiply mit negativem Faktor  → CG-E-008 (C-ARITH-MUL-NEG, Operanden-Constraint)
+ */
+export function executeArithChain(chain: ArithChain): ArithChainResult {
+  const stepResults: ArithResult[] = [];
+  let current: ArithValue = chain.initial;
+
+  for (const step of chain.steps) {
+    let result: ArithResult;
+    switch (step.op) {
+      case 'add':
+        result = add(current, { ...current, ns: step.operand }); break;
+      case 'subtract':
+        result = subtract(current, { ...current, ns: step.operand }); break;
+      case 'multiply':
+        result = multiply(current, step.operand); break;
+      case 'divide':
+        result = divide(current, step.operand); break;
+      case 'modulo':
+        result = modulo(current, step.operand); break;
+      case 'power':
+        result = power(current, step.operand); break;
+      default:
+        throw new CG_E_003_ExtentError(
+          `executeArithChain: Unbekannte Operation '${(step as ArithChainStep).op}'.`
+        );
+    }
+    stepResults.push(result);
+    current = result.value;
+  }
+
+  return {
+    value:       current,
+    decoded:     decode(current),
+    stepResults,
+  };
+}

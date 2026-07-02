@@ -232,8 +232,8 @@ for (const [l, v] of Object.entries(byLevel)) {
 
 const ok = failed === 0;
 if (ok) {
-  console.log(`\n\x1b[32m✓ LEVEL ${level} KONFORM — ${passed}/${results.length} Tests bestanden\x1b[0m`);
-  console.log(`  Modus: ${mode}${mode === 'in-process' ? ` | ${skipCount} pending (v1.2+11-B)` : ''}\n`);
+  console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skipCount} pending\x1b[0m`);
+  console.log(`  Klasse-B/RK45 + ${skipCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)${mode === 'in-process' ? ` | Modus: ${mode}` : ''}\n`);
 } else {
   console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);
 }

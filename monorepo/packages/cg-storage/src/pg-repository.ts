@@ -86,9 +86,9 @@ export class PgDomainRepository implements IDomainRepository {
   async findByNameVersion(n: string, v: string): Promise<CGDomain | null> {
     // Liest is_published aus v_domains (berücksichtigt lifecycle_events)
     const r = await this.p.query(
-      `SELECT d.*, v.is_published
+      `SELECT d.*, COALESCE(v.is_published, false) AS is_published
        FROM domains d
-       JOIN v_domains v ON v.name=d.name AND v.version=d.version
+       LEFT JOIN v_domains v ON v.name=d.name AND v.version=d.version
        WHERE d.name=$1 AND d.version=$2`,
       [n, v],
     );
@@ -98,9 +98,9 @@ export class PgDomainRepository implements IDomainRepository {
 
   async list(): Promise<CGDomain[]> {
     const r = await this.p.query(
-      `SELECT d.*, v.is_published
+      `SELECT d.*, COALESCE(v.is_published, false) AS is_published
        FROM domains d
-       JOIN v_domains v ON v.name=d.name AND v.version=d.version
+       LEFT JOIN v_domains v ON v.name=d.name AND v.version=d.version
        ORDER BY d.created_at`,
     );
     return r.rows.map(row => this._map(row as Record<string, unknown>));
@@ -164,11 +164,13 @@ export class PgManifestRepository implements IManifestRepository {
   }
 
   async findByCGFI(cgfi: string): Promise<CGManifest | null> {
-    // Liest is_tombstoned aus v_manifests (berücksichtigt lifecycle_events)
+    // LEFT JOIN: Manifest ohne lifecycle_events-Eintrag (= frisch eingefügt, nicht tombstoned)
+    // wird korrekt gefunden. COALESCE liefert false wenn kein Tombstone-Event existiert.
+    // M-8 fix: INNER JOIN schlug fehl wenn kein lifecycle_event für das Manifest existierte.
     const r = await this.p.query(
-      `SELECT m.*, v.is_tombstoned
+      `SELECT m.*, COALESCE(v.is_tombstoned, false) AS is_tombstoned
        FROM manifests m
-       JOIN v_manifests v ON v.cgfi=m.cgfi
+       LEFT JOIN v_manifests v ON v.cgfi=m.cgfi
        WHERE m.cgfi=$1`,
       [cgfi],
     );
@@ -268,9 +270,9 @@ export class PgSegmentRepository implements ISegmentRepository {
   async resolve(id: string): Promise<CGUASegment> {
     // effective_status aus v_segments (berücksichtigt lifecycle_events)
     const r = await this.p.query(
-      `SELECT s.*, v.effective_status
+      `SELECT s.*, COALESCE(v.effective_status, s.status) AS effective_status
        FROM segments s
-       JOIN v_segments v ON v.id=s.id
+       LEFT JOIN v_segments v ON v.id=s.id
        WHERE s.id=$1`,
       [id],
     );
@@ -296,9 +298,9 @@ export class PgSegmentRepository implements ISegmentRepository {
 
   async list(): Promise<CGUASegment[]> {
     const r = await this.p.query(
-      `SELECT s.*, v.effective_status
+      `SELECT s.*, COALESCE(v.effective_status, s.status) AS effective_status
        FROM segments s
-       JOIN v_segments v ON v.id=s.id
+       LEFT JOIN v_segments v ON v.id=s.id
        ORDER BY s.base_address`,
     );
     return r.rows.map(row => this._map(row as Record<string, unknown>));

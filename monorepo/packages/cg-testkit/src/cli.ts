@@ -85,6 +85,6 @@ console.log(`Bestanden:      ${passed}`);
 console.log(`Fehlgeschlagen: ${failed}`);
 for(const[l,v]of Object.entries(byLevel)){if(Number(l)<=level)console.log(`Level ${l}:        ${v.p}/${v.t}`);}
 const ok=failed===0;
-if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} KONFORM — ${passed}/${results.length} Tests bestanden\x1b[0m`);console.log(`  Sprint 11-A: L3-A/B neu | ${skippedCount} pending (v1.2+11-B)\n`);}
+if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skippedCount} pending\x1b[0m`);console.log(`  Klasse-B/RK45 + ${skippedCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)\n`);}
 else{console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);}
 process.exit(ok?0:1);

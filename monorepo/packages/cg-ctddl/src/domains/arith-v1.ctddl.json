@@ -1,139 +1,285 @@
-﻿{
+{
   "$schema": "https://chronogrid.systems/schema/ctddl/v1.4",
-  "$comment": "CG-STD-2100 v1.4 conformant CTDDL definition -- ARITH Domain v1.0",
-  "domain": {
-    "name": "ARITH",
-    "version": "1.0",
-    "status": "normative",
-    "description": "Allgemeine Zeitarithmetik-Domain. Repraesentiert Zeitdauern ohne Epoch-Bezug. Basis-Zugangspfad zu ChronoGrid fuer Entwickler und Lernende.",
-    "normative_reference": "CG-APP-0600 UC6, CG-STD-2100 v1.4",
-    "type": "LINEAR",
-    "granularity": "NANOSECOND",
-    "granularity_ns": 1,
-    "epoch": null,
-    "timezone": {
-      "default": "none",
-      "fixed": true
+  "$comment": "CG-STD-2100 v1.5 conformant CTDDL definition -- ARITH Domain v1.0",
+  "name": "ARITH",
+  "version": "1.0",
+  "status": "normative",
+  "description": "Allgemeine Zeitarithmetik-Domain. Repraesentiert Zeitdauern ohne Epoch-Bezug. Basis-Zugangspfad zu ChronoGrid fuer Entwickler und Lernende.",
+  "normative_reference": "CG-APP-0600 UC6, CG-STD-2100 v1.5",
+  "type": "linear",
+  "granularity": "nanosecond",
+  "granularity_ns": 1,
+  "epoch": null,
+  "timezone": {
+    "default": "none",
+    "fixed": true
+  },
+  "extent": {
+    "min": 0,
+    "max": "UNBOUNDED",
+    "inclusive": true,
+    "comment": "t >= 0 zwingend (Invariante I-R2: totale Ordnung, negative Dauer undefiniert)"
+  },
+  "semantics": "relative",
+  "arith_kind_allowed": [
+    "duration",
+    "period"
+  ],
+  "arith_kind_comment": "arith_kind unterscheidet einmalige Dauer (duration) von wiederkehrender Periode (period). Reine Metadaten -- nicht in CGTA, nicht in MachineID. Domain-Kategorie semantics=relative; semantics=address/filetype verboten.",
+  "allowed_operations": [
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "modulo",
+    "power",
+    "compare",
+    "abs"
+  ],
+  "forbidden_operations": [
+    {
+      "op": "add_two_timestamps",
+      "error": "CG-E-008",
+      "reason": "ARITH kennt keinen Timestamp-Begriff (kein Epoch)"
     },
-    "extent": {
-      "min": 0,
-      "max": "UNBOUNDED",
-      "inclusive": true,
-      "comment": "t >= 0 zwingend (Invariante I-R2: totale Ordnung, negative Dauer undefiniert)"
+    {
+      "op": "multiply_by_negative",
+      "error": "CG-E-008",
+      "reason": "Ergebnis waere negativ -- verletzt extent.min=0"
     },
-    "semantics": "relative",
-    "arith_kind_allowed": ["duration", "period"],
-    "arith_kind_comment": "arith_kind unterscheidet einmalige Dauer (duration) von wiederkehrender Periode (period). Reine Metadaten -- nicht in CGTA, nicht in MachineID. Domain-Kategorie semantics=relative; semantics=address/filetype verboten.",
-    "allowed_operations": [
-      "add", "subtract", "multiply", "divide", "modulo", "power", "compare", "abs"
-    ],
-    "forbidden_operations": [
-      { "op": "add_two_timestamps",   "error": "CG-E-008", "reason": "ARITH kennt keinen Timestamp-Begriff (kein Epoch)" },
-      { "op": "multiply_by_negative", "error": "CG-E-008", "reason": "Ergebnis waere negativ -- verletzt extent.min=0" },
-      { "op": "divide_by_zero",       "error": "CG-E-008", "reason": "Mathematisch undefiniert" },
-      { "op": "filetype_operations",  "error": "CG-E-008", "reason": "semantics=filetype nicht erlaubt in ARITH" }
-    ],
-    "constraints": [
-      {
-        "id": "C-ARITH-001",
-        "rule": "duration_non_negative",
-        "condition": "t >= 0",
-        "invariant_ref": "I-R2",
-        "error": "CG-E-003",
-        "severity": "FATAL",
-        "description": "Zeitdauer darf nie negativ sein. Subtraktion a-b ist nur erlaubt wenn a >= b."
-      },
-      {
-        "id": "C-ARITH-002",
-        "rule": "no_float_internal",
-        "condition": "typeof value === 'bigint'",
-        "invariant_ref": "I-R3",
-        "error": "CG-E-006",
-        "severity": "FATAL",
-        "description": "Alle internen Berechnungen muessen als BigInt (Nanosekunden) erfolgen. Float-Arithmetik verletzt I-R3 (Determinismus)."
-      },
-      {
-        "id": "C-ARITH-003",
-        "rule": "irrational_explicit_approximation",
-        "condition": "approximation_error_ns !== undefined",
-        "invariant_ref": "I-R3",
-        "severity": "WARNING",
-        "description": "Irrationale Zahlen (pi, e, sqrt2, phi) koennen nicht exakt in Z-inf dargestellt werden. Approximation und Fehler in ns muessen explizit annotiert werden."
-      },
-      {
-        "id": "C-ARITH-004",
-        "rule": "no_calendar_context",
-        "severity": "INFO",
-        "description": "ARITH kennt keine Schaltsekunden, keine Sommerzeit, keine Schaltjahre. 1 Tag = 86400 sec exakt. Fuer Kalender: UTC oder Gregorian verwenden."
-      }
-    ],
-    "hierarchy": [
-      { "name": "day",         "factor_ns": 86400000000000, "label_de": "Tag",         "label_en": "day"         },
-      { "name": "hour",        "factor_ns": 3600000000000,  "label_de": "Stunde",       "label_en": "hour"        },
-      { "name": "minute",      "factor_ns": 60000000000,    "label_de": "Minute",       "label_en": "minute"      },
-      { "name": "second",      "factor_ns": 1000000000,     "label_de": "Sekunde",      "label_en": "second"      },
-      { "name": "millisecond", "factor_ns": 1000000,        "label_de": "Millisekunde", "label_en": "millisecond" },
-      { "name": "microsecond", "factor_ns": 1000,           "label_de": "Mikrosekunde", "label_en": "microsecond" },
-      { "name": "nanosecond",  "factor_ns": 1,              "label_de": "Nanosekunde",  "label_en": "nanosecond"  }
-    ],
-    "format": {
-      "type": "composite",
-      "pattern": "[D Tag(e) ][H Std ][M Min ][S Sek][.ms ms][.us us][.ns ns]",
-      "iso8601_duration": true,
-      "cgta_template": "CG:ARITH:{value_ns}/v1"
+    {
+      "op": "divide_by_zero",
+      "error": "CG-E-003",
+      "reason": "Mathematisch undefiniert — CG-E-003 FATAL gemäß CG-STD-3100 §8.7.7 (Entscheidung E-1=a)",
+      "severity": "FATAL"
     },
-    "precision_classes": [
-      { "id": "P-SEC", "granularity_ns": 1000000000, "description": "Sekunden-Aufloesung (Allgemein)"          },
-      { "id": "P-MS",  "granularity_ns": 1000000,    "description": "Millisekunden-Aufloesung (Systeme)"       },
-      { "id": "P-NS",  "granularity_ns": 1,          "description": "Nanosekunden-Aufloesung (ChronoGrid-Norm)" },
-      { "id": "P-PS",  "granularity_ns": 0,          "description": "Pikosekunden -- experimentell"            }
-    ],
-    "irrational_constants": [
-      { "name": "pi",    "symbol": "pi", "approx_ns": 3141592653, "error_ns": 1, "description": "pi = 3.14159265358979... (Fehler < 1 ns)" },
-      { "name": "e",     "symbol": "e",  "approx_ns": 2718281828, "error_ns": 1, "description": "e = 2.71828182845904... (Fehler < 1 ns)"  },
-      { "name": "sqrt2", "symbol": "sqrt2", "approx_ns": 1414213562, "error_ns": 1, "description": "sqrt(2) = 1.41421356237... (Fehler < 1 ns)" },
-      { "name": "phi",   "symbol": "phi",   "approx_ns": 1618033988, "error_ns": 1, "description": "phi = 1.61803398874... (Fehler < 1 ns)"    }
-    ],
-    "mappings": [
-      {
-        "target_domain": "TAI",
-        "class": "A",
-        "type": "offset",
-        "requires_epoch": true,
-        "description": "ARITH-Dauer + TAI-Zeitpunkt ergibt neuen TAI-Zeitpunkt.",
-        "formula": "tai_result = tai_start + arith_value_ns",
-        "arith_kind_constraint": "Nur erlaubt wenn arith_kind=duration (ARITH) + semantics=time (TAI)"
-      },
-      {
-        "target_domain": "UTC",
-        "class": "A",
-        "type": "offset",
-        "requires_epoch": true,
-        "description": "ARITH-Dauer + UTC-Zeitpunkt. Schaltsekunden werden in UTC-Domain behandelt.",
-        "formula": "utc_result = utc_start + arith_value_ns",
-        "arith_kind_constraint": "Nur erlaubt wenn arith_kind=duration (ARITH) + semantics=time (UTC)"
-      }
-    ],
-    "examples": [
-      { "value_sec": 144,       "value_ns": 144000000000,        "label": "2 min 24 sec",          "arith_kind": "duration", "note": "Fibonacci F(12) = 12x12"      },
-      { "value_sec": 3600,      "value_ns": 3600000000000,       "label": "1 Stunde",              "arith_kind": "duration", "note": "60 x 60 exakt"               },
-      { "value_sec": 86400,     "value_ns": 86400000000000,      "label": "1 Tag",                 "arith_kind": "duration", "note": "24 x 3600 exakt"             },
-      { "value_sec": 31536000,  "value_ns": 31536000000000000,   "label": "1 Jahr (365 Tage)",     "arith_kind": "duration"                                         },
-      { "value_sec": 17.123,    "value_ns": 17123000000,         "label": "17 sec 123 ms",         "arith_kind": "duration", "note": "Dezimalwert -> BigInt exakt"  },
-      { "value_sec": 3.141592653, "value_ns": 3141592653,        "label": "3 sec 141 ms 592 us 653 ns", "arith_kind": "duration",
-        "approximation": true, "approximation_error_ns": 589793238,
-        "note": "pi * 1sec -- approximiert auf 1 ns. Fehler: 589793238 ps"                                                                                      },
-      { "period_sec": 1337.759, "value_ns": 1337759000000,       "label": "22 min 17 sec 759 ms",  "arith_kind": "period",   "note": "Pulsar PSR B1919+21"         }
-    ],
-    "metadata": {
-      "created": "2026-05",
-      "author": "Kurt Bauer, Initiator & Hauptautor, ChronoGrid Systems",
-      "document_ref": "CG-APP-0600 UC6",
-      "stack_layer": 2,
-      "normative_documents": ["CG-STD-2100 v1.4", "CG-STD-3100 v1.5", "CG-STD-0000 v0.5"],
-      "stability": "high",
-      "intended_use": "Zugangspfad Level 1, Entwickler-Onboarding, Lehrbeispiele, Prototyping",
-      "not_intended_for": "Kalender-Kontext, Schaltsekunden, Zeitzonen, absolute Zeitpunkte (Timestamp)"
+    {
+      "op": "filetype_operations",
+      "error": "CG-E-008",
+      "reason": "semantics=filetype nicht erlaubt in ARITH"
     }
-  }
+  ],
+  "constraints": [
+    {
+      "id": "C-ARITH-001",
+      "rule": "duration_non_negative",
+      "condition": "t >= 0",
+      "invariant_ref": "C-ARITH-001-type-constraint",
+      "error": "CG-E-003",
+      "severity": "FATAL",
+      "description": "Zeitdauer (arithKind=duration) darf nie negativ sein — Typ-Constraint, kein I-R2-Derivat. I-R2 garantiert totale Ordnung auf ℤ∞; C-ARITH-001 schränkt den Wertebereich für duration ein. Subtraktion a-b wirft CG-E-003 wenn a < b und arithKind=duration."
+    },
+    {
+      "id": "C-ARITH-002",
+      "rule": "no_float_internal",
+      "condition": "typeof value === 'bigint'",
+      "invariant_ref": "I-R3",
+      "error": "CG-E-006",
+      "severity": "FATAL",
+      "description": "Alle internen Berechnungen muessen als BigInt (Nanosekunden) erfolgen. Float-Arithmetik verletzt I-R3 (Determinismus)."
+    },
+    {
+      "id": "C-ARITH-003",
+      "rule": "irrational_explicit_approximation",
+      "condition": "approximation_error_ns !== undefined",
+      "invariant_ref": "I-R3",
+      "severity": "WARNING",
+      "description": "Irrationale Zahlen (pi, e, sqrt2, phi) koennen nicht exakt in Z-inf dargestellt werden. Approximation und Fehler in ns muessen explizit annotiert werden."
+    },
+    {
+      "id": "C-ARITH-004",
+      "rule": "no_calendar_context",
+      "severity": "INFO",
+      "description": "ARITH kennt keine Schaltsekunden, keine Sommerzeit, keine Schaltjahre. 1 Tag = 86400 sec exakt. Fuer Kalender: UTC oder Gregorian verwenden."
+    }
+  ],
+  "hierarchy": [
+    {
+      "name": "day",
+      "factor_ns": 86400000000000,
+      "label_de": "Tag",
+      "label_en": "day"
+    },
+    {
+      "name": "hour",
+      "factor_ns": 3600000000000,
+      "label_de": "Stunde",
+      "label_en": "hour"
+    },
+    {
+      "name": "minute",
+      "factor_ns": 60000000000,
+      "label_de": "Minute",
+      "label_en": "minute"
+    },
+    {
+      "name": "second",
+      "factor_ns": 1000000000,
+      "label_de": "Sekunde",
+      "label_en": "second"
+    },
+    {
+      "name": "millisecond",
+      "factor_ns": 1000000,
+      "label_de": "Millisekunde",
+      "label_en": "millisecond"
+    },
+    {
+      "name": "microsecond",
+      "factor_ns": 1000,
+      "label_de": "Mikrosekunde",
+      "label_en": "microsecond"
+    },
+    {
+      "name": "nanosecond",
+      "factor_ns": 1,
+      "label_de": "Nanosekunde",
+      "label_en": "nanosecond"
+    }
+  ],
+  "format": {
+    "type": "composite",
+    "pattern": "[D Tag(e) ][H Std ][M Min ][S Sek][.ms ms][.us us][.ns ns]",
+    "iso8601_duration": true,
+    "cgta_template": "CG:ARITH:{value_ns}/v1"
+  },
+  "precision_classes": [
+    {
+      "id": "P-SEC",
+      "granularity_ns": 1000000000,
+      "description": "Sekunden-Aufloesung (Allgemein)"
+    },
+    {
+      "id": "P-MS",
+      "granularity_ns": 1000000,
+      "description": "Millisekunden-Aufloesung (Systeme)"
+    },
+    {
+      "id": "P-NS",
+      "granularity_ns": 1,
+      "description": "Nanosekunden-Aufloesung (ChronoGrid-Norm)"
+    },
+    {
+      "id": "P-PS",
+      "granularity_ns": 0,
+      "description": "Pikosekunden -- experimentell"
+    }
+  ],
+  "irrational_constants": [
+    {
+      "name": "pi",
+      "symbol": "pi",
+      "approx_ns": 3141592653,
+      "error_ns": 1,
+      "description": "pi = 3.14159265358979... (Fehler < 1 ns)"
+    },
+    {
+      "name": "e",
+      "symbol": "e",
+      "approx_ns": 2718281828,
+      "error_ns": 1,
+      "description": "e = 2.71828182845904... (Fehler < 1 ns)"
+    },
+    {
+      "name": "sqrt2",
+      "symbol": "sqrt2",
+      "approx_ns": 1414213562,
+      "error_ns": 1,
+      "description": "sqrt(2) = 1.41421356237... (Fehler < 1 ns)"
+    },
+    {
+      "name": "phi",
+      "symbol": "phi",
+      "approx_ns": 1618033988,
+      "error_ns": 1,
+      "description": "phi = 1.61803398874... (Fehler < 1 ns)"
+    }
+  ],
+  "mappings": [
+    {
+      "target_domain": "TAI",
+      "class": "A",
+      "type": "offset",
+      "requires_epoch": true,
+      "description": "ARITH-Dauer + TAI-Zeitpunkt ergibt neuen TAI-Zeitpunkt.",
+      "formula": "tai_result = tai_start + arith_value_ns",
+      "arith_kind_constraint": "Nur erlaubt wenn arith_kind=duration (ARITH) + semantics=time (TAI)"
+    },
+    {
+      "target_domain": "UTC",
+      "class": "A",
+      "type": "offset",
+      "requires_epoch": true,
+      "description": "ARITH-Dauer + UTC-Zeitpunkt. Schaltsekunden werden in UTC-Domain behandelt.",
+      "formula": "utc_result = utc_start + arith_value_ns",
+      "arith_kind_constraint": "Nur erlaubt wenn arith_kind=duration (ARITH) + semantics=time (UTC)"
+    }
+  ],
+  "examples": [
+    {
+      "value_sec": 144,
+      "value_ns": 144000000000,
+      "label": "2 min 24 sec",
+      "arith_kind": "duration",
+      "note": "Fibonacci F(12) = 12x12"
+    },
+    {
+      "value_sec": 3600,
+      "value_ns": 3600000000000,
+      "label": "1 Stunde",
+      "arith_kind": "duration",
+      "note": "60 x 60 exakt"
+    },
+    {
+      "value_sec": 86400,
+      "value_ns": 86400000000000,
+      "label": "1 Tag",
+      "arith_kind": "duration",
+      "note": "24 x 3600 exakt"
+    },
+    {
+      "value_sec": 31536000,
+      "value_ns": 31536000000000000,
+      "label": "1 Jahr (365 Tage)",
+      "arith_kind": "duration"
+    },
+    {
+      "value_sec": 17.123,
+      "value_ns": 17123000000,
+      "label": "17 sec 123 ms",
+      "arith_kind": "duration",
+      "note": "Dezimalwert -> BigInt exakt"
+    },
+    {
+      "value_sec": 3.141592653,
+      "value_ns": 3141592653,
+      "label": "3 sec 141 ms 592 us 653 ns",
+      "arith_kind": "duration",
+      "approximation": true,
+      "approximation_error_ns": 589793238,
+      "note": "pi * 1sec -- approximiert auf 1 ns. Fehler: 589793238 ps"
+    },
+    {
+      "period_sec": 1337.759,
+      "value_ns": 1337759000000,
+      "label": "22 min 17 sec 759 ms",
+      "arith_kind": "period",
+      "note": "Pulsar PSR B1919+21"
+    }
+  ],
+  "metadata": {
+    "created": "2026-05",
+    "author": "Kurt Bauer, Initiator & Hauptautor, ChronoGrid Systems",
+    "document_ref": "CG-APP-0600 UC6",
+    "stack_layer": 2,
+    "normative_documents": [
+      "CG-STD-2100 v1.5",
+      "CG-STD-3100 v1.6",
+      "CG-STD-0000 v0.8"
+    ],
+    "stability": "high",
+    "intended_use": "Zugangspfad Level 1, Entwickler-Onboarding, Lehrbeispiele, Prototyping",
+    "not_intended_for": "Kalender-Kontext, Schaltsekunden, Zeitzonen, absolute Zeitpunkte (Timestamp)"
+  },
+  "_mapping_execution_status": "Roadmap: Generische CTDDL-Mapping-Ausführung ist in der Referenzimplementierung v0.9 nicht implementiert. convertValue() nutzt Built-in-Domains (UTC/TAI/GPS/Unix). Generischer Mapping-Executor = Phase-4-Ziel (CG-STD-4100 v1.2)."
 }
