@@ -1,0 +1,4 @@
+'ChronoGrid.chronogrid_th_1_1_total_order' depends on axioms: [propext]
+'ChronoGrid.chronogrid_prop_1_1_unique_representation' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_1_mapping_uniqueness' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_5_1_unique_time_value' does not depend on any axioms
