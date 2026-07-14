@@ -30,7 +30,7 @@ jobs:
       - name: Build (lake build)
         run: ~/.elan/bin/lake build
 
-      - name: Print axioms (Nachweis: kein sorry)
+      - name: "Print axioms (Nachweis: kein sorry)"
         run: |
           ~/.elan/bin/lake env lean Chronogrid/Basic.lean | tee verification-log.txt
 
