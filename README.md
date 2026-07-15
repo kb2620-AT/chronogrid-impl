@@ -18,7 +18,7 @@ All time values are integer arithmetic (ℤ∞ / BigInt) — no floating-point, 
 
 | Component | Status |
 |---|---|
-| Normative specification | 21 documents — 8 CG-STD + 1 CG-ORG + 11 CG-APP (see `/docs`) |
+| Normative specification | 21 documents — 8 CG-STD + 1 CG-ORG + 11 CG-APP (see [chronogrid.at/preview](https://chronogrid.at/preview)) |
 | Reference implementation | cg-engine v0.9.0 — TypeScript/Node.js/PostgreSQL |
 | Test suite | 229/229 cg-testkit CLI (101 L1 + 96 L2 + 32 L3) + 80/80 Vitest |
 | Conformance certificate | CG-CONF-002 — self-declared (see Limitations below) |
@@ -49,8 +49,7 @@ The CLI output "Level-3 KONFORM" means: *Level-3-Suite green (core paths); Class
 ## Repository Structure
 
 ```
-/docs          # All 21 normative specification documents (PDF)
-/specs         # CTDDL domain definitions (JSON + ABNF grammar)
+/docs/specs    # API artifacts: OpenAPI schema, GraphQL schema, API test suite (YAML)
 /packages
   cg-types/    # Shared types, error codes (CG-E-001…012), DTOs
   cg-ctddl/    # CG-STD-2100: CTDDL parser and validator
@@ -123,7 +122,7 @@ curl http://localhost:3000/v1/health   # → 200 OK
 
 ## Specification Documents
 
-The full normative stack (21 documents) is available in `/docs` and at [chronogrid.at/preview](https://chronogrid.at/preview).
+The full normative stack (21 documents) is not distributed in this code repository; it is available at [chronogrid.at/preview](https://chronogrid.at/preview). This repo's `/docs/specs` contains only the machine-readable API artifacts (OpenAPI, GraphQL schema, API test suite).
 
 | Layer | Document | Content |
 |---|---|---|
