@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "ChronoGrid Reference Implementation"
+abstract: >-
+  Reference implementation (TypeScript/Node.js/PostgreSQL) of ChronoGrid,
+  a formal, domain-aware time addressing standard (CGTA) for heterogeneous
+  computer systems. Implements the normative stack CG-STD-0000 through
+  CG-STD-6100.
+authors:
+  - family-names: "Bauer"
+    given-names: "Kurt"
+    # ORCID iD wird nachgetragen, sobald angelegt (orcid.org/register)
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    affiliation: "ChronoGrid Systems"
+repository-code: "https://github.com/kb2620-AT/chronogrid-impl"
+url: "https://chronogrid.at/preview"
+license: Apache-2.0
+version: "0.9.0"
+date-released: "2026-07-15"
+keywords:
+  - time-standardization
+  - time-addressing
+  - CGTA
+  - ISO-TC-154
+  - timestamp
+  - BigInt
