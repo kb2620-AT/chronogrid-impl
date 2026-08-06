@@ -11,7 +11,7 @@ authors:
   - family-names: "Bauer"
     given-names: "Kurt"
     # ORCID iD wird nachgetragen, sobald angelegt (orcid.org/register)
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    # orcid: "https://orcid.org/0009-0004-3461-8666"
     affiliation: "ChronoGrid Systems"
 repository-code: "https://github.com/kb2620-AT/chronogrid-impl"
 url: "https://chronogrid.at/preview"
