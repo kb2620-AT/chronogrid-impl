@@ -19,7 +19,7 @@ import hashlib, sys, re
 
 # ─── Konstanten ────────────────────────────────────────────────────────────────
 
-CURRENT_TAI_MINUS_UTC_NS = 27_000_000_000   # 27 Schaltsekunden in ns (seit 2017)
+CURRENT_TAI_MINUS_UTC_NS = 37_000_000_000   # TAI-UTC-Offset in ns = 37s (seit 2017-01-01; NICHT die Schaltsekunden-Anzahl)
 GPS_TAI_OFFSET_NS        = 19_000_000_000   # GPS = TAI - 19s (seit 2017, fest)
 
 GOLDEN_VECTOR = 'f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da'
@@ -164,10 +164,10 @@ def build_tests():
             lambda: compute_cgfi('t1', 'h', 'pdf') != compute_cgfi('t2', 'h', 'pdf'), True),
 
         # Mapping TAI ↔ UTC
-        ('GV-030', 'UTC→TAI: +27s Offset',
-            lambda: convert_value(0, 'UTC', 'TAI'), 27_000_000_000),
-        ('GV-031', 'TAI→UTC: -27s Offset',
-            lambda: convert_value(27_000_000_000, 'TAI', 'UTC'), 0),
+        ('GV-030', 'UTC→TAI: +37s Offset',
+            lambda: convert_value(0, 'UTC', 'TAI'), 37_000_000_000),
+        ('GV-031', 'TAI→UTC: -37s Offset',
+            lambda: convert_value(37_000_000_000, 'TAI', 'UTC'), 0),
         ('GV-032', 'UTC→TAI→UTC Roundtrip',
             lambda: tai_to_utc(utc_to_tai(1_742_041_937_000_000_000)), 1_742_041_937_000_000_000),
         ('GV-033', 'convert_value same domain',
