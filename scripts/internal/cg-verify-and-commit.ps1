@@ -1,21 +1,24 @@
 <#
 .SYNOPSIS
   ChronoGrid CG-FIX - lokale Verifikation und Commit.
-  Bildet die drei CI-Jobs aus cg-normative-tests.yml lokal nach:
+  Bildet die drei CI-Jobs aus .github/workflows/chronogrid-ci.yml lokal nach:
     1) Level-3 In-Process  (conformance.ts --level 3)
     2) CGUA + ARITH Vitest
     3) Black-box API gegen echtes PostgreSQL (Docker)
   Committet NUR, wenn alle Tore gruen sind. Push nach main nur mit -Push.
 
 .BEISPIELE
+  # Aufruf vom Repo-Root aus (der Pfad zum Monorepo steckt in -MonorepoRoot,
+  # das Skript ist von seinem eigenen Ablageort unabhaengig).
+
   # Vollstaendig (vitest + in-process + black-box), lokal committen, nicht pushen:
-  .\cg-verify-and-commit.ps1
+  .\scripts\internal\cg-verify-and-commit.ps1
 
   # Ohne black-box (kein Docker/PostgreSQL noetig), nur Tore 1+2:
-  .\cg-verify-and-commit.ps1 -SkipBlackBox
+  .\scripts\internal\cg-verify-and-commit.ps1 -SkipBlackBox
 
   # Vollstaendig + nach main pushen (mit Rueckfrage):
-  .\cg-verify-and-commit.ps1 -Push
+  .\scripts\internal\cg-verify-and-commit.ps1 -Push
 
 .HINWEISE
   - Voraussetzungen: node 22, pnpm 9, git. Fuer black-box zusaetzlich Docker.

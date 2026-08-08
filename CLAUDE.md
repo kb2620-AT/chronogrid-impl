@@ -154,8 +154,16 @@ section (B-1/B-2/B-3) is the phrasing to reuse.
 
 ## Repo hygiene
 
-The working tree accumulates untracked PowerShell fix scripts (`Apply-FIX*.ps1`, `cg-*.ps1`),
-scan reports, and log files at both root and `monorepo/`; `monorepo/{packages` is a stray directory
-from a malformed shell command. These are not part of the build — do not import from them or treat
-them as sources of truth. `.gitignore` also excludes all specification binaries (`*.docx`, `*.pdf`,
-`ChronoGrid-docs/`) because the authoritative documentation lives in Google Drive, not here.
+Helper scripts belong in `scripts/` (`cg-fix-run.ps1`, `cg-testkit-integrate.ps1`) and
+`scripts/internal/` — the latter holds the ones that stay useful across sprints:
+`cg-verify-and-commit.ps1` (reproduces the three CI jobs locally, gated commit, `-Push` optional),
+`CG-PrePublic-Scan.ps1` (pre-publication checklist), `CG-FIX-C_apply.ps1`, and the
+`update_chronogrid_docs*` pair. None of them are part of the build — do not import from them or
+treat them as sources of truth.
+
+Single-use apply scripts (`Apply-FIX*.ps1`, `sprint11b-cosmic-fix.ps1`, `fix_p1d.py`) and their
+scan/report output used to accumulate untracked at root and in `monorepo/`; they were removed once
+their fixes had landed. Do not resurrect that pattern — a one-shot patch script is disposable the
+moment its commit exists, and its report is regenerable. `.gitignore` also excludes all
+specification binaries (`*.docx`, `*.pdf`, `ChronoGrid-docs/`) because the authoritative
+documentation lives in Google Drive, not here.
