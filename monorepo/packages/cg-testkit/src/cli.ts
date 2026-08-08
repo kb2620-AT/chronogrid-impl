@@ -7,6 +7,7 @@ import{ucTests}from'./suites/t-uc.js';
 import{ALL_T_CGUAS}from'./suites/t-cguas.js';
 import{cosmicTests}from'./suites/t-l3-cosmic.js';
 import{ALL_T_L3_PENDING,PENDING_SUMMARY}from'./suites/t-l3-pending.js';
+import{T_L3_RK45}from'./suites/t-l3-rk45.js';
 import{handleGraphQL}from'cg-api/graphql.js';
 import{signPayload,verifySignature}from'cg-api/webhooks.js';
 import{InMemoryTimepointRepository,InMemoryDomainRepository,InMemoryManifestRepository,InMemoryRelationRepository,InMemorySegmentRepository}from'cg-storage/repository.js';
@@ -31,7 +32,7 @@ const sprint7Tests:TestCase[]=[
   {id:'T-S7-008',level:2,description:'Webhook verifySignature falsch',run:()=>verifySignature('s','b','sha256=bad'),expected:false},
 ];
 // skip:true-Tests (t-l3-pending) werden nicht ausgeführt, aber im Report gezählt
-const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests,...ALL_T_CGUAS,...cosmicTests];
+const allTests:TestCase[]=[...engineTests,...storageTests,...sprint7Tests,...authTests,...apiTests,...ucTests,...ALL_T_CGUAS,...cosmicTests,...T_L3_RK45];
 const skipTests=(ALL_T_L3_PENDING as Array<TestCase&{skip?:boolean;skipReason?:string}>).filter(t=>t.skip===true);
 const filtered=allTests.filter(t=>t.level<=level);
 const skippedCount=skipTests.filter(t=>t.level<=level).length;
@@ -85,6 +86,6 @@ console.log(`Bestanden:      ${passed}`);
 console.log(`Fehlgeschlagen: ${failed}`);
 for(const[l,v]of Object.entries(byLevel)){if(Number(l)<=level)console.log(`Level ${l}:        ${v.p}/${v.t}`);}
 const ok=failed===0;
-if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skippedCount} pending\x1b[0m`);console.log(`  Klasse-B/RK45 + ${skippedCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)\n`);}
+if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skippedCount} pending\x1b[0m`);console.log(`  Klasse-B/RK45 aktiv (T-L3-RK45-001–005, exakte BigInt-Arithmetik); ${skippedCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)\n`);}
 else{console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);}
 process.exit(ok?0:1);

@@ -1,16 +1,18 @@
 /**
  * cg-testkit/src/suites/t-l3-pending.ts
- * Alle Level-3-Tests mit fehlender Implementierung (Sprint 11-A Stand)
+ * Alle Level-3-Tests mit fehlender Implementierung
  *
  * Gruppen:
  *   OP-07  (WORM/OAIS):            T-L3-WORM-001–005  → pending CG-STD-4100 v1.2
  *   OP-08  (Geo-Redundanz):        T-L3-GEO-001–005   → pending CG-STD-4100 v1.2
- *   L3-C   (MissionTime/RK45):     T-L3-RK45-001–005  → pending Sprint 11-B
  *   L3-F   (GraphQL Subscriptions):T-L3-SUB-001–005   → pending Sprint 11-B
  *   L3-G   (Event-Bus/mTLS):       T-L3-EBUS-001–005  → pending Sprint 11-B
  *   L3-H   (Anchoring/Audit):      T-L3-ANCH-001–005  → pending Sprint 11-B
  *
- * grep-Befund 26.05.2026: keine Implementierung für RK45, WebSocket, EventBus,
+ * Nicht mehr hier: L3-C (MissionTime/RK45, T-L3-RK45-001–005). Die Gruppe ist
+ * mit A4/Weg A Schritt 2 aktiv geworden und liegt in suites/t-l3-rk45.ts.
+ *
+ * grep-Befund 26.05.2026: keine Implementierung für WebSocket, EventBus,
  * audit/versions/anchor/fingerprint im Monorepo vorhanden.
  */
 
@@ -75,34 +77,9 @@ export const T_L3_GEO: TestCase[] = [
 ];
 
 // ── L3-C: MissionTime / Klasse-B / RK45 (T-L3-RK45-001–005) ─────────────────
-// executeClassBMapping nicht implementiert (grep 26.05.2026)
-export const T_L3_RK45: TestCase[] = [
-  { id:'T-L3-RK45-001', suite:'T-L3-PENDING', level:3,
-    description:'[pending-11-B / L3-C] RK45: MissionTime-Domain ausführbar (executeClassBMapping)',
-    run:()=>{throw Object.assign(new Error('pending-11-B: executeClassBMapping fehlt'),{pending:true});},
-    expected:'pending-11-B', skip:true,
-    skipReason:'Klasse-B/RK45 — executeClassBMapping nicht implementiert, Sprint 11-B' },
-  { id:'T-L3-RK45-002', suite:'T-L3-PENDING', level:3,
-    description:'[pending-11-B / L3-C] RK45: Lorentz-Faktor γ(v=7660 m/s) korrekt (ISS)',
-    run:()=>{throw Object.assign(new Error('pending-11-B: executeClassBMapping fehlt'),{pending:true});},
-    expected:'pending-11-B', skip:true,
-    skipReason:'Klasse-B/RK45 — executeClassBMapping nicht implementiert, Sprint 11-B' },
-  { id:'T-L3-RK45-003', suite:'T-L3-PENDING', level:3,
-    description:'[pending-11-B / L3-C] RK45: Eigenzeit-Integral 90 min ISS-Orbit (Toleranz 10⁻¹² s/s)',
-    run:()=>{throw Object.assign(new Error('pending-11-B: executeClassBMapping fehlt'),{pending:true});},
-    expected:'pending-11-B', skip:true,
-    skipReason:'Klasse-B/RK45 — executeClassBMapping nicht implementiert, Sprint 11-B' },
-  { id:'T-L3-RK45-004', suite:'T-L3-PENDING', level:3,
-    description:'[pending-11-B / L3-C] RK45: Ephemeride fehlt → Fehler (Pflichtparameter)',
-    run:()=>{throw Object.assign(new Error('pending-11-B: executeClassBMapping fehlt'),{pending:true});},
-    expected:'pending-11-B', skip:true,
-    skipReason:'Klasse-B/RK45 — executeClassBMapping nicht implementiert, Sprint 11-B' },
-  { id:'T-L3-RK45-005', suite:'T-L3-PENDING', level:3,
-    description:'[pending-11-B / L3-C] RK45: Ergebnis ist BigInt, kein Float-Zwischenwert',
-    run:()=>{throw Object.assign(new Error('pending-11-B: executeClassBMapping fehlt'),{pending:true});},
-    expected:'pending-11-B', skip:true,
-    skipReason:'Klasse-B/RK45 — executeClassBMapping nicht implementiert, Sprint 11-B' },
-];
+// AKTIV seit A4/Weg A Schritt 2 (exakte BigInt-Arithmetik).
+// Die Gruppe ist nach suites/t-l3-rk45.ts umgezogen und wird dort ausgeführt;
+// executeClassBMapping liegt in cg-engine/src/relativistik.ts.
 
 // ── L3-F: GraphQL Subscriptions (T-L3-SUB-001–005) ───────────────────────────
 // WebSocket/Subscriptions nicht implementiert (grep 26.05.2026)
@@ -195,17 +172,17 @@ export const T_L3_ANCH: TestCase[] = [
 
 // ── Export ────────────────────────────────────────────────────────────────────
 export const ALL_T_L3_PENDING: TestCase[] = [
-  ...T_L3_WORM, ...T_L3_GEO, ...T_L3_RK45, ...T_L3_SUB, ...T_L3_EBUS, ...T_L3_ANCH,
+  ...T_L3_WORM, ...T_L3_GEO, ...T_L3_SUB, ...T_L3_EBUS, ...T_L3_ANCH,
 ];
 
 export const PENDING_SUMMARY = {
-  total:              ALL_T_L3_PENDING.length,  // 30
+  total:              ALL_T_L3_PENDING.length,  // 25
   worm_oais:          T_L3_WORM.length,         //  5 — pending-v1.2 (OP-07)
   geo_redundancy:     T_L3_GEO.length,          //  5 — pending-v1.2 (OP-08)
-  rk45_classb:        T_L3_RK45.length,         //  5 — pending Sprint 11-B
+  rk45_classb:        0,                        //  0 — aktiv, siehe t-l3-rk45.ts
   graphql_sub:        T_L3_SUB.length,          //  5 — pending Sprint 11-B
   event_bus_mtls:     T_L3_EBUS.length,         //  5 — pending Sprint 11-B
   anchoring_audit:    T_L3_ANCH.length,         //  5 — pending Sprint 11-B
   pending_v12:        10,
-  pending_sprint_11b: 20,
+  pending_sprint_11b: 15,
 } as const;

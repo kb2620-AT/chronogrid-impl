@@ -38,8 +38,8 @@ All pnpm/node commands run from `monorepo/` (there is no root `package.json`).
 pnpm install
 pnpm build                    # tsc --build across the project-reference graph
 
-pnpm test                     # cg-testkit CLI, Level 3 — must be 229/229
-npx vitest run --globals      # Vitest — must be 80/80 (CGUA 30 + ARITH 50)
+pnpm test                     # cg-testkit CLI, Level 3 — must be 234/234
+npx vitest run --globals      # Vitest — must be 104/104 (CGUA 30 + ARITH 50 + RELB 24)
 pnpm test:report              # same suite + writes conformance-report.json
 
 pnpm api:dev                  # http://127.0.0.1:3000, in-memory storage
@@ -79,6 +79,7 @@ Dependencies flow strictly downward; never introduce a back-edge.
 cg-types      errors (CG-E-001…012 factory), domain types — depends on nothing
   └ cg-ctddl  CTDDL parser/validator (CG-STD-2100)
       └ cg-engine   encode/decode, MachineID, CGFI, mappings, Allen, Gregorian (CG-STD-3100)
+                    + exakt.ts (Rat/isqrt) und relativistik.ts (Klasse-B/RK45, §8.6)
           ├ cg-cguas     89-bit address space, SegmentRegistry (CG-STD-6100)
           ├ cg-usecases  UC1–UC5 domain definitions (CG-APP-0600)
           └ cg-storage   repositories: in-memory + PostgreSQL (CG-STD-4100 Ch. 3)
@@ -99,7 +100,12 @@ These are enforced by tests and CI, and PRs violating them are rejected (see CON
 
 - **No floating-point for time values.** `bigint` internally, `string` at API and DB boundaries.
   Introducing `Number` for a time value violates CG-E-003. In Python, integer arithmetic with
-  explicit truncation — no `/`.
+  explicit truncation — no `/`. The Class-B path in `relativistik.ts` extends this to the whole
+  computation via `exakt.ts` (`Rat` = reduced BigInt fraction, `isqrt` = Newton integer root):
+  Butcher coefficients, states and accumulator are exact, and the three rounding points (R1 root,
+  R2 rate fixed-point, R3 ns output) are named in the file header. Float survives only below the
+  `KEIN RECHENPFAD` divider — the offline ephemeris generator and diagnostics. Do not lift anything
+  from there into the integrator.
 - **Golden Vector is frozen:** `SHA-256("TAI:0:1.0")` =
   `f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da`. Three CI jobs check it.
   This pins the MachineID preimage format to `` `${name}:${dec(t)}:${version}` `` — σ-free.
@@ -137,9 +143,11 @@ issue first (CG-ORG-2100 §4); implementation-only fixes do not.
 
 ## Conformance claims — be precise
 
-The CLI prints "LEVEL 3 KONFORM" but this is scoped. `t-l3-pending.ts` holds ~30 `skip: true` stubs
-that are counted and reported but never executed (WORM/OAIS, geo-redundancy, RK45 Class-B
-relativistic mappings, GraphQL subscriptions, mTLS event bus, anchoring audit). The certificate is
+The CLI prints "LEVEL 3 KONFORM" but this is scoped. `t-l3-pending.ts` holds 25 `skip: true` stubs
+that are counted and reported but never executed (WORM/OAIS, geo-redundancy, GraphQL subscriptions,
+mTLS event bus, anchoring audit). Class-B/RK45 left that list in August 2026 and is active as
+`t-l3-rk45.ts` — but its ephemeris is an offline Kepler fixture, not an SP3 import, so "Class-B
+implemented" must not be read as "usable against real satellite orbits". The certificate is
 self-declared and no independent verification exists yet. When writing docs, reports, or commit
 messages, do not round this up to unqualified conformance — the README's "Current Limitations"
 section (B-1/B-2/B-3) is the phrasing to reuse.

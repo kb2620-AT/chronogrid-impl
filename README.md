@@ -20,7 +20,7 @@ All time values are integer arithmetic (ℤ∞ / BigInt) — no floating-point, 
 |---|---|
 | Normative specification | 21 documents — 8 CG-STD + 1 CG-ORG + 11 CG-APP (see [chronogrid.at/preview](https://chronogrid.at/preview)) |
 | Reference implementation | cg-engine v0.9.0 — TypeScript/Node.js/PostgreSQL |
-| Test suite | 229/229 cg-testkit CLI (101 L1 + 96 L2 + 32 L3) + 80/80 Vitest |
+| Test suite | 234/234 cg-testkit CLI (101 L1 + 96 L2 + 37 L3) + 104/104 Vitest |
 | Conformance certificate | CG-CONF-002 — self-declared (see Limitations below) |
 | External review | ⏳ Pending — outreach to RISC/JKU and TU Wien initiated (June 2026) |
 
@@ -39,10 +39,12 @@ CG-CONF-002 was issued by the same author who wrote the standard and the impleme
 Institutional independence is the goal of the current academic outreach phase.
 
 **B-3 — Level-3 claim scoped to core paths only.**
-The Level-3 test suite passes on normative core paths (229/229).
-Class-B relativistic mappings (RK45/Runge-Kutta-Fehlberg) are not yet implemented.
-30 test stubs are documented open in v1.2 + Sprint-11B.
-The CLI output "Level-3 KONFORM" means: *Level-3-Suite green (core paths); Class-B/RK45 + 30 stubs documented open.*
+The Level-3 test suite passes on normative core paths (234/234).
+Class-B relativistic mappings (RK45/Runge-Kutta-Fehlberg) are implemented in exact
+BigInt arithmetic and active as T-L3-RK45-001–005; the ephemeris still comes from an
+offline Kepler fixture generator — SP3 orbit-file import is a separate open step.
+25 test stubs remain documented open in v1.2 + Sprint-11B.
+The CLI output "Level-3 KONFORM" means: *Level-3-Suite green (core paths); 25 stubs documented open.*
 
 ---
 
@@ -56,7 +58,7 @@ The CLI output "Level-3 KONFORM" means: *Level-3-Suite green (core paths); Class
   cg-engine/   # CG-STD-3100: encode/decode, MachineID, CGFI, ArithChain, Allen
   cg-cguas/    # CG-STD-6100 Part A: segment logic, CGUA resolver
   cg-storage/  # CG-STD-4100 Ch. 3: 8 tables, migrations, repository
-  cg-testkit/  # CG-STD-5100: normative test suite (229 tests)
+  cg-testkit/  # CG-STD-5100: normative test suite (234 tests)
 /apps
   cg-api/      # CG-STD-4100 Ch. 4–8: HTTP/GraphQL gateway (25 routes)
 /examples      # Use case walkthroughs (ATC, notary, IEC 61850, metrology, QKD)
@@ -77,10 +79,10 @@ pnpm build
 
 **Run the test suite:**
 ```bash
-# Full normative suite (229 tests)
+# Full normative suite (234 tests)
 tsx packages/cg-testkit/src/cli.ts --level 3
 
-# Vitest (80 tests: CGUA + arithmetic)
+# Vitest (104 tests: CGUA + arithmetic + Class-B/RK45)
 npx vitest run --globals
 
 # Golden Vector verification (must equal f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da)
