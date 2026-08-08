@@ -29,6 +29,20 @@
  * Polynom verstärkt sie sogar. Nach unten auszuweichen ist nicht zulässig —
  * dort wächst der Abschneidefehler wieder über das Budget.
  *
+ * ── Lizenzstatus der IGS-Daten ──────────────────────────────────────────────
+ * Die IGS-Nutzungsbedingungen (Fassung 5.8.2020) sind KEINE Lizenz: sie
+ * enthalten keinen Rechtegewährungssatz und keine Aussage zur Weitergabe. Die
+ * verbreitete Annahme, IGS-Produkte stünden unter CC BY 4.0, ist nicht
+ * belegbar. Verbindlich ist die Namensnennung — Anbieter der Daten, deren
+ * Geldgeber, der IGS selbst und die beitragenden Organisationen. Der Disclaimer
+ * schließt lebenskritische Verwendung ausdrücklich aus.
+ *
+ * Konsequenz für dieses Repository: es liegt keine Fremddatei darin. Sämtliche
+ * Fixtures erzeugt der Writer weiter unten aus eigenen Kepler-Elementen. Wer
+ * gegen echte Produktdateien prüfen will, lädt sie lokal und hält die
+ * Namensnennung selbst ein — die Kette liest sie, das Repository verteilt sie
+ * nicht.
+ *
  * ── Warum die ECEF→ECI-Drehung entfällt ─────────────────────────────────────
  * f hängt nur von |r| und |v| ab (skalares 1PN-Modell). |r| ist drehinvariant.
  * Für die Geschwindigkeit gilt mit R = R_z(θ) und ω ∥ z:
