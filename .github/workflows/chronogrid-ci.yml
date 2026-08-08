@@ -28,7 +28,7 @@ jobs:
         working-directory: monorepo
         run: pnpm install --no-frozen-lockfile
 
-      - name: Run cg-testkit CLI (Level 3) -- 229/229
+      - name: Run cg-testkit CLI (Level 3) -- 234/234 (101 L1 + 96 L2 + 37 L3)
         working-directory: monorepo
         run: |
           node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3
@@ -36,7 +36,7 @@ jobs:
           NODE_ENV: test
           STORAGE: memory
 
-      - name: Run Vitest (CGUA 30 + ARITH 50) -- 80/80
+      - name: Run Vitest (CGUA 30 + ARITH 50 + RELB 24) -- 104/104
         working-directory: monorepo
         run: npx vitest run --globals
         env:
