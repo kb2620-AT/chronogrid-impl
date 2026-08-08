@@ -51,6 +51,7 @@ if (mode === 'in-process') {
     { ALL_T_CGUAS },
     { cosmicTests },
     { T_L3_RK45 },
+    { T_L3_SP3 },
   ] = await Promise.all([
     import('./suites/t-engine.js'),
     import('./suites/t-storage.js'),
@@ -60,6 +61,7 @@ if (mode === 'in-process') {
     import('./suites/t-cguas.js'),
     import('./suites/t-l3-cosmic.js'),
     import('./suites/t-l3-rk45.js'),
+    import('./suites/t-l3-sp3.js'),
   ]);
 
   const { handleGraphQL }    = await import('cg-api/graphql.js');
@@ -111,7 +113,7 @@ if (mode === 'in-process') {
   allInProcessTests = [
     ...engineTests, ...storageTests, ...sprint7Tests,
     ...authTests, ...apiTests, ...ucTests, ...ALL_T_CGUAS, ...cosmicTests,
-    ...T_L3_RK45,
+    ...T_L3_RK45, ...T_L3_SP3,
   ];
 }
 
@@ -236,7 +238,7 @@ for (const [l, v] of Object.entries(byLevel)) {
 const ok = failed === 0;
 if (ok) {
   console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skipCount} pending\x1b[0m`);
-  console.log(`  Klasse-B/RK45 aktiv (T-L3-RK45-001–005, exakte BigInt-Arithmetik); ${skipCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)${mode === 'in-process' ? ` | Modus: ${mode}` : ''}\n`);
+  console.log(`  Klasse-B/RK45 + SP3-Kette aktiv (T-L3-RK45-001–006, T-L3-SP3-001–006, exakte BigInt-Arithmetik); ${skipCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)${mode === 'in-process' ? ` | Modus: ${mode}` : ''}\n`);
 } else {
   console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);
 }

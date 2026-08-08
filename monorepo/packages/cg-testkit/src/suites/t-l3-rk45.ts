@@ -19,12 +19,34 @@
 import type { TestCase } from '../runner.js';
 import { rat, ratAbs, ratSub, ratCmp, ratRoundToScale } from 'cg-engine/exakt.js';
 import {
+  type ExactWorldline,
   executeClassBMapping, srRateTermExact, analyticMeanRateExact,
   gpsFixtureWorldline, issFixtureWorldline, ISS_SEMI_MAJOR_AXIS,
 } from 'cg-engine/relativistik.js';
+import { writeSp3d, parseSp3, sp3Worldline, compareMagnitudes } from 'cg-engine/sp3.js';
 
 const NS = 1_000_000_000n;
 const T0 = 1_770_000_000n * NS;   // fester TAI-Startpunkt (ns) — Determinismus
+
+/**
+ * Fährt eine Weltlinie durch die SP3-Kette (schreiben, lesen, interpolieren)
+ * und misst die Abweichung der Beträge |r|, |v| und der Rate f gegen das
+ * Original. Das Prüffenster lässt an beiden Rändern Platz, damit gemessen wird,
+ * was im Betrieb zählt — die zentrierten Interpolationsfenster, nicht die
+ * geschobenen Randfenster.
+ */
+function deviationVsKepler(
+  W: ExactWorldline, stepSec: bigint, count: number,
+): { dr: number; dv: number; df: number } {
+  const step = stepSec * NS;
+  const file = parseSp3(writeSp3d({
+    worldline: W, startTaiNs: T0, intervalNs: step, count, frame: 'ECEF',
+  }));
+  const m = compareMagnitudes(
+    W, sp3Worldline(file), T0 + 8n * step, BigInt(count - 18) * step, 16,
+  );
+  return { dr: m.maxDr, dv: m.maxDv, df: m.maxDf };
+}
 
 export const T_L3_RK45: TestCase[] = [
 
@@ -96,6 +118,39 @@ export const T_L3_RK45: TestCase[] = [
       }
     },
     expected: { code: 'CG-E-005.002', cgClass: 'MappingError', httpStatus: 422 } },
+
+  { id: 'T-L3-RK45-006', level: 3,
+    description: '[L3-C] RK45: Bahngenauigkeit Δr/Δv — grobe Ephemeride wird erkannt',
+    run: () => {
+      // Warum dieses Kriterium neben T-L3-RK45-003 nötig ist:
+      // f = L_G − (v²/2 + GM/r)/c² ist außerordentlich unempfindlich gegen
+      // Bahnfehler. Eine um Kilometer falsche Ephemeride kann die Raten-
+      // toleranz von 10⁻¹² s/s mühelos einhalten. Wer nur die Rate prüft,
+      // bescheinigt der Kette dann Tauglichkeit, obwohl sie die Bahn gar nicht
+      // trifft — geprüft wäre nur, dass relativistische Effekte klein sind.
+      // Deshalb werden |r| und |v| direkt gegen die Kepler-Referenz gestellt.
+      //
+      // Fall A: ISS auf dem 15-min-Raster. Neun Intervalle überspannen 8100 s
+      // bei 5568 s Umlaufzeit — das Interpolationsfenster deckt mehr als eine
+      // volle Bahn ab. Gemessen: Δ|r| ≈ 1,1 km, aber Δf ≈ 1,6·10⁻¹³ s/s, also
+      // unter der Toleranz. Genau dieser Fall rutschte bisher durch.
+      // Fall B: dieselbe Bahn auf 300 s. Gemessen: Δ|r| ≈ 2,4 cm.
+      const W = issFixtureWorldline(0, T0);
+      const grob = deviationVsKepler(W, 900n, 40);
+      const fein = deviationVsKepler(W, 300n, 40);
+      return {
+        // A: Rate unauffällig, Bahn grob daneben — der Durchrutscher
+        grobRateBleibtUnterToleranz: grob.df < 1e-12,
+        grobBahnVerletztKriterium: grob.dr > 1,
+        // B: angemessenes Raster besteht beide Kriterien
+        feinRateUnterToleranz: fein.df < 1e-12,
+        feinBahnUnterMeter: fein.dr < 1,
+        feinGeschwindigkeitUnterCmProSekunde: fein.dv < 1e-2,
+      };
+    },
+    expected: { grobRateBleibtUnterToleranz: true, grobBahnVerletztKriterium: true,
+                feinRateUnterToleranz: true, feinBahnUnterMeter: true,
+                feinGeschwindigkeitUnterCmProSekunde: true } },
 
   { id: 'T-L3-RK45-005', level: 3,
     description: '[L3-C] RK45: Ergebnis ist BigInt, kein Float-Zwischenwert',
