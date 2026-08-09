@@ -63,11 +63,20 @@
  *   R-4  999999.999999 im Uhrfeld ist der Fehlwert des Formats, nicht die
  *        Zahl 999999,999999 µs. Er wird als 'nicht vorhanden' geführt.
  *
- * Nicht geschlossen ist damit die Knotenzuordnung (K-1…K-3) — der Reader wählt
- * die Stützstellen weiterhin über u = (t−t₀)/Δ aus dem gefilterten Strom und
- * klemmt am Dateirand, statt abzulehnen. IGS Final löst das nicht aus (keine
- * Satellitenlücken), die letzte Epoche einer Tagesdatei aber sehr wohl: dort
- * extrapoliert stateAt still um rund 80 m. Siehe CG-VERM-0101 §4.3 und §4.4.
+ * Nachgezogen wurde seither die Knotenzuordnung (§5 B):
+ *
+ *   K-1  stateAt sucht die Stützstellen über die tatsächlichen Epochenzeit-
+ *        punkte des Satelliten, nicht über u = (t−t₀)/Δ als Index in den
+ *        gefilterten Strom, und lehnt ein nicht äquidistantes Fenster ab. Eine
+ *        einzige fehlende Epoche verschob die Position zuvor um 1857 km, still.
+ *   K-2  Der Rasterbefund (Sp3GridReport, Feld `grid`) hält fehlende Records
+ *        und rasterfremde Epochen fest, ohne zu werfen — die Datei bleibt
+ *        lesbar, nur die Auswertung im betroffenen Fenster scheitert.
+ *
+ * Offen bleibt K-3: stateAt klemmt das Fenster am Dateirand in den gültigen
+ * Bereich, statt abzulehnen. IGS Final löst die Knotenverschiebung nicht aus
+ * (keine Satellitenlücken), die letzte Epoche einer Tagesdatei aber sehr wohl:
+ * dort extrapoliert stateAt still um rund 80 m. Siehe CG-VERM-0101 §4.4.
  *
  * ── Warum die ECEF→ECI-Drehung entfällt ─────────────────────────────────────
  * f hängt nur von |r| und |v| ab (skalares 1PN-Modell). |r| ist drehinvariant.
@@ -168,6 +177,44 @@ export interface Sp3EpochBlock {
   readonly sats: ReadonlyMap<string, Sp3Record>;
 }
 
+/** Ein fehlender Satellitenrecord: wer, wann (Sollzeitpunkt im Raster). */
+export interface Sp3GridGap {
+  readonly sat: string;
+  readonly tTaiNs: bigint;
+}
+
+/**
+ * Rasterbefund einer SP3-Datei — K-2, CG-VERM-0101 §5 B.
+ *
+ * Beschreibend, nicht wertend: der Befund wirft nicht. Eine Datei mit Lücke
+ * bleibt lesbar; erst die Auswertung in einem betroffenen Fenster scheitert
+ * (K-1, Äquidistanzprüfung in sp3Worldline.stateAt).
+ *
+ * Bezugsgröße ist das Sollraster t₀ + k·Δ mit Δ aus der ##-Zeile und k über die
+ * deklarierte Epochenzahl der #c-Kopfzeile — genau die Angabe, gegen die §5 B
+ * zu prüfen verlangt. Fehlt sie, tritt die gelesene Epochenzahl an ihre Stelle.
+ *
+ * Der Befund wird immer erhoben, nicht auf Anforderung: er kostet
+ * O(Epochen × Satelliten) — für IGS Final 96 × 32 Vergleiche — und ein Befund,
+ * den man erst anfordern muss, wird nicht angefordert.
+ */
+export interface Sp3GridReport {
+  /** Epochenzahl aus der #c-Kopfzeile (Spalten 32–39); undefined, wenn unlesbar. */
+  readonly declaredEpochs: number | undefined;
+  /** Tatsächlich gelesene Epochenblöcke. */
+  readonly actualEpochs: number;
+  /** Rasterabstand aus der ##-Zeile [ns]. */
+  readonly intervalNs: bigint;
+  /** Erste gelesene Epoche [TAI ns] — Ursprung des Sollrasters. */
+  readonly firstTaiNs: bigint;
+  /** Epochenzeitpunkte, die nicht auf t₀ + k·Δ liegen. */
+  readonly offGrid: readonly bigint[];
+  /** Fehlende Records, nach Satellit und Zeit sortiert. */
+  readonly gaps: readonly Sp3GridGap[];
+  /** true ⇔ Epochenzahl stimmt (oder fehlt), offGrid leer, gaps leer. */
+  readonly complete: boolean;
+}
+
 export interface Sp3File {
   readonly version: 'c' | 'd';
   /** Kopf-Kennung: 'P' = nur Positionen, 'V' = Positionen + Geschwindigkeiten. */
@@ -180,6 +227,13 @@ export interface Sp3File {
   /** Bezugssystem der Koordinaten. Reale Produkte sind erdfest (ECEF). */
   readonly frame: 'ECEF' | 'ECI';
   readonly blocks: readonly Sp3EpochBlock[];
+  /** Rasterbefund (K-2). Bei einwandfreien Dateien: complete === true. */
+  readonly grid: Sp3GridReport;
+}
+
+/** Sollzeitpunkte, an denen dieser Satellit keinen Record hat (K-2). */
+export function sp3GapsFor(file: Sp3File, sat: string): readonly bigint[] {
+  return file.grid.gaps.filter(g => g.sat === sat).map(g => g.tTaiNs);
 }
 
 // ─── Exakte Lagrange-Interpolation ───────────────────────────────────────────
@@ -350,6 +404,9 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
   const mode: 'P' | 'V' = modeChar;
   const coordSys = head.slice(46, 51).trim() || 'UNKNOWN';
   const agency = head.slice(56, 60).trim() || 'UNKNOWN';
+  /** K-2: deklarierte Epochenzahl, #c-Zeile Spalten 32–39 (CG-VERM-0101 §3.1). */
+  const declEpochField = head.slice(31, 39).trim();
+  const declaredEpochs = /^\d+$/.test(declEpochField) ? Number(declEpochField) : undefined;
 
   let intervalNs = 0n;
   let frame: 'ECEF' | 'ECI' = 'ECEF';        // reale Produkte sind erdfest
@@ -560,9 +617,53 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
     }
     intervalNs = blocks[1]!.tTaiNs - blocks[0]!.tTaiNs;
   }
+
+  // ── K-2: Rasterbefund ──────────────────────────────────────────────────────
+  //
+  // Gemeldet, nicht geworfen — und das ist bewusst asymmetrisch zu R-1, wo eine
+  // falsche Satellitenzahl hart fehlschlägt. Der Unterschied liegt in der Art
+  // des Mangels: eine falsche Satellitenzahl ist ein Widerspruch im Kopf selbst.
+  // Die Datei behauptet 32 und liefert 17; jede Auswertung stünde auf unklarem
+  // Grund, weil unklar ist, was die Datei überhaupt zu enthalten meint. Eine
+  // abgeschnittene oder lückenhafte Datei dagegen ist in ihrem vorhandenen Teil
+  // vollständig korrekt. Kaputte Aussage über die Daten gegenüber weniger Daten
+  // als angekündigt — nur das erste macht die Datei unbrauchbar.
+  const t0Grid = blocks[0]!.tTaiNs;
+  const nGrid = declaredEpochs ?? blocks.length;
+  const byTime = new Map<bigint, Sp3EpochBlock>(blocks.map(b => [b.tTaiNs, b]));
+
+  const offGrid: bigint[] = [];
+  for (const b of blocks) {
+    const d = b.tTaiNs - t0Grid;
+    if (d % intervalNs !== 0n || d < 0n || d / intervalNs >= BigInt(nGrid)) offGrid.push(b.tTaiNs);
+  }
+
+  // Je Satellit über das Sollraster laufen, nicht über die gelesenen Blöcke:
+  // so fällt sowohl ein fehlender Record als auch eine ganz fehlende Epoche auf.
+  // Eine verschobene Epoche erscheint daher zweimal — in offGrid, und als Lücke
+  // aller Satelliten an dem Rasterplatz, den sie nicht mehr besetzt.
+  const gaps: Sp3GridGap[] = [];
+  for (const sat of satellites) {
+    for (let k = 0; k < nGrid; k++) {
+      const t = t0Grid + BigInt(k) * intervalNs;
+      if (!byTime.get(t)?.sats.has(sat)) gaps.push({ sat, tTaiNs: t });
+    }
+  }
+
+  const grid: Sp3GridReport = {
+    declaredEpochs,
+    actualEpochs: blocks.length,
+    intervalNs,
+    firstTaiNs: t0Grid,
+    offGrid,
+    gaps,
+    complete: offGrid.length === 0 && gaps.length === 0
+      && (declaredEpochs === undefined || declaredEpochs === blocks.length),
+  };
+
   return {
     version, mode, satellites, coordSys, agency, intervalNs,
-    frame: opts.frame ?? frame, blocks,
+    frame: opts.frame ?? frame, blocks, grid,
   };
 }
 
@@ -616,6 +717,15 @@ export interface Sp3WorldlineInfo {
   readonly lastTaiNs: bigint;
   readonly intervalNs: bigint;
   readonly epochs: number;
+  /**
+   * K-2: Sollzeitpunkte, an denen genau dieser Satellit keinen Record hat.
+   *
+   * Steht hier, damit der Aufrufer die Lücken schon beim BAU der Weltlinie
+   * sieht — nicht erst, wenn ein Auswertepunkt zufällig in ein betroffenes
+   * Fenster fällt. Eine leere Liste ist die Zusage, dass jede Auswertung im
+   * Bereich der Datei ein äquidistantes Fenster findet.
+   */
+  readonly gapsTaiNs: readonly bigint[];
 }
 
 export interface Sp3Worldline extends ExactWorldline {
@@ -676,7 +786,17 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
   const t0 = times[0]!;
   const tN = times[times.length - 1]!;
   const step = file.intervalNs;
-  /** Ableitung je Rasterschritt → je Sekunde. */
+  /**
+   * Ableitung je Rasterschritt → je Sekunde.
+   *
+   * Dieser eine Faktor gilt NUR, weil das Stützstellenfenster äquidistant sein
+   * muss: lagrangeValueAndDerivative differenziert nach τ, und τ zählt in
+   * Rasterschritten der Weite Δ = step. Nur wenn alle Knoten diesen Abstand
+   * haben, ist dτ/dt = 1/Δ über das ganze Fenster konstant und die Umrechnung
+   * eine Multiplikation. Bei ungleichen Knoten wäre sie punktabhängig — die
+   * Äquidistanzprüfung in stateAt (K-1) ist damit nicht nur eine Absicherung
+   * der Knotenlage, sondern auch die Voraussetzung dieser Zeile.
+   */
   const perSec = ratDiv(rat(NS), rat(step));
   const half = Math.floor((points - 1) / 2);
 
@@ -691,7 +811,7 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
     info: {
       satellite: sat, points, degree: points - 1, velocitySource: source,
       earthRotation: rotate, firstTaiNs: t0, lastTaiNs: tN,
-      intervalNs: step, epochs: blocks.length,
+      intervalNs: step, epochs: blocks.length, gapsTaiNs: sp3GapsFor(file, sat),
     },
     stateAt(tNs: Rat): ExactState {
       if (ratCmp(tNs, rat(t0)) < 0 || ratCmp(tNs, rat(tN)) > 0) {
