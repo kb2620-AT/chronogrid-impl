@@ -8,6 +8,14 @@
 # Die statischen Pruefungen sind Heuristiken. Sie zeigen die relevanten
 # Codestellen und markieren Verdachtsfaelle — die Entscheidung triffst du.
 #
+# GRENZE DIESES SKRIPTS: Alle Pruefungen unter 3 bis 7 sind Textsuchen. Sie
+# treffen eine Schreibweise, nicht ein Verhalten. Eine korrekte Umsetzung, die
+# anders formuliert ist, schlaegt hier faelschlich an; eine falsche Umsetzung in
+# der erwarteten Formulierung kaeme durch. Belastbar ist deshalb nicht dieses
+# Skript, sondern die Mutationsprobe: Datei gezielt verfaelschen und nachweisen,
+# dass der Reader sie ablehnt. Ein FEHLT oder PRUEFEN hier ist ein Anlass
+# nachzusehen, kein Befund.
+#
 # Aufruf im Repository-Wurzelverzeichnis:  bash scripts/internal/review-r-paket.sh
 # =============================================================================
 set -uo pipefail
@@ -54,16 +62,22 @@ else
   info "Erwartet: deklarierte Zahl lesen, mit satellites.length vergleichen, bei"
   info "Abweichung werfen. Eine blosse Warnung genuegt nicht."
 fi
-if grep -n "!== '0'" "$SP3" >/dev/null; then
-  pass "Fuellslots '  0' werden verworfen"
+# Beide Polaritaeten: Positivfilter (!== '0' behalten) wie Negativfilter
+# (=== '0' ueberspringen) erfuellen die Anforderung.
+if grep -nE "!== '0'|=== '0'" "$SP3" >/dev/null; then
+  pass "Fuellslots '  0' werden verworfen:"
+  grep -nE "!== '0'|=== '0'" "$SP3" | sed 's/^/             /'
 else
   chk "Filter fuer Fuellslots '  0' nicht erkannt — von Hand nachsehen"
 fi
 
 say "4  R-2  Versionszeichen c UND d"
-if grep -nE "#\[cd\]|=== 'c'|'c' \|\| |\['c', ?'d'\]" "$SP3" >/dev/null; then
+# Sammelpruefung (/^#[cd]/) wie getrennte Pruefung (head[1] !== 'c' && ... 'd')
+# erfuellen die Anforderung. R hat sie getrennt, damit 'keine Kopfzeile' und
+# 'Version nicht unterstuetzt' verschiedene Meldungen bekommen.
+if grep -nE "#\[cd\]|=== 'c'|!== 'c'|'c' \|\| |\['c', ?'d'\]" "$SP3" >/dev/null; then
   pass "Versionspruefung vorhanden:"
-  grep -nE "#\[cd\]|version" "$SP3" | head -6 | sed 's/^/             /'
+  grep -nE "#\[cd\]|=== 'c'|!== 'c'" "$SP3" | head -6 | sed 's/^/             /'
 else
   fail "keine Pruefung des Versionszeichens gefunden"
 fi
@@ -77,9 +91,12 @@ elif ! grep -nE "slice\(9, ?12\)|slice\(9,12\)" "$SP3" >/dev/null; then
   grep -nE "startsWith\('%c'\)" "$SP3" | sed 's/^/             /'
 else
   grep -nE "%c|timeSystem|zeitsystem|GPST?'" "$SP3" | head -12 | sed 's/^/             /'
-  if grep -nE "\?\?\s*'GPS'|\|\|\s*'GPS'|= 'GPS';" "$SP3" >/dev/null; then
+  # Nur Ersatzwert-Formen gelten als Default. Eine benannte Konstante
+  # (const SP3_TIME_SYSTEM = 'GPS') ist der Vergleichswert, nicht ein Default —
+  # sie trifft hier deshalb nicht mehr.
+  if grep -nE "\?\?\s*'GPS'|\|\|\s*'GPS'" "$SP3" >/dev/null; then
     chk "moeglicher stiller Default auf GPS — diese Zeilen genau ansehen:"
-    grep -nE "\?\?\s*'GPS'|\|\|\s*'GPS'|= 'GPS';" "$SP3" | sed 's/^/             /'
+    grep -nE "\?\?\s*'GPS'|\|\|\s*'GPS'" "$SP3" | sed 's/^/             /'
     info "Gefordert: bei jedem Wert ausser GPS fehlschlagen, nicht annehmen."
   else
     pass "kein offensichtlicher Default auf GPS"
