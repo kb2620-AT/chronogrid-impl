@@ -659,8 +659,22 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
   const omega = opts.omega ?? OMEGA_EARTH;
   const omegaVec: readonly [Rat, Rat, Rat] = [rat(0n), rat(0n), omega];  // ω ∥ z
 
-  const t0 = blocks[0]!.tTaiNs;
-  const tN = blocks[blocks.length - 1]!.tTaiNs;
+  /**
+   * K-1: Die tatsächlich vorhandenen Epochenzeitpunkte dieses Satelliten.
+   *
+   * `blocks` ist bereits auf den Satelliten gefiltert. Sein Index stimmt genau
+   * dann mit der Rasterposition überein, wenn der Satellit in KEINER Epoche
+   * fehlt — sobald eine fehlt, laufen beide auseinander, und eine Knotenwahl
+   * über u = (t−t₀)/Δ greift auf verschobene Stützstellen zu. Still: keine
+   * Ausnahme, kein Signal, nur falsche Werte (CG-VERM-0101 §4.3).
+   *
+   * Deshalb wird ab hier ausschließlich über diese Zeitpunkte gesucht; das
+   * Sollraster dient nur noch als Maßstab, an dem Abweichungen auffallen.
+   */
+  const times: readonly bigint[] = blocks.map(b => b.tTaiNs);
+
+  const t0 = times[0]!;
+  const tN = times[times.length - 1]!;
   const step = file.intervalNs;
   /** Ableitung je Rasterschritt → je Sekunde. */
   const perSec = ratDiv(rat(NS), rat(step));
@@ -680,21 +694,50 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
       intervalNs: step, epochs: blocks.length,
     },
     stateAt(tNs: Rat): ExactState {
-      // u = (t − t₀)/Δ — Position im Raster, exakt rational
-      const u = ratDiv(ratSub(tNs, rat(t0)), rat(step));
-      // 0 ≤ u ≤ N−1, ohne Division: u.d > 0 nach Rat-Invariante
-      if (u.n < 0n || u.n > BigInt(blocks.length - 1) * u.d) {
+      if (ratCmp(tNs, rat(t0)) < 0 || ratCmp(tNs, rat(tN)) > 0) {
         throw Errors.MappingError.refPointOutOfExtent(
           `SP3: t = ${ratToNumber(tNs, 0).toFixed(0)} ns liegt außerhalb der Ephemeride `
           + `[${t0}, ${tN}] ns (${sat})`,
           { sat, t0: t0.toString(), t1: tN.toString() },
         );
       }
-      const k = u.n / u.d;                              // ⌊u⌋, u ≥ 0
-      let start = Number(k) - half;
+
+      // K-1: größter Index k mit times[k] ≤ t — Binärsuche über die
+      // tatsächlichen Zeitpunkte, keine Division durch das Sollraster.
+      // Vergleich ohne Division: times[m] ≤ t ⇔ times[m]·t.d ≤ t.n (t.d > 0).
+      let lo = 0, hi = times.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (times[mid]! * tNs.d <= tNs.n) lo = mid; else hi = mid - 1;
+      }
+      let start = lo - half;
       if (start < 0) start = 0;
-      if (start + points > blocks.length) start = blocks.length - points;
-      const tau = ratSub(u, rat(BigInt(start)));
+      if (start + points > times.length) start = times.length - points;
+
+      // K-1: Das gewählte Fenster muss äquidistant im Sollraster liegen. Trifft
+      // das nicht zu, fehlt dem Satelliten mindestens eine Epoche innerhalb des
+      // Fensters — dann sind die Knoten nicht die, die das Polynom unterstellt,
+      // und lagrangeValueAndDerivative (Knoten 0…n−1) wäre schlicht das falsche
+      // Modell. Abbruch statt eines still verschobenen Ergebnisses.
+      for (let i = 1; i < points; i++) {
+        const soll = BigInt(i) * step;
+        const ist = times[start + i]! - times[start]!;
+        if (ist !== soll) {
+          throw Errors.ConstraintError.mappingConstraintViolated(
+            `SP3: Stützstellenfenster von ${sat} ist nicht äquidistant — Knoten ${i} liegt `
+            + `${ist} ns nach dem Fensteranfang, erwartet ${soll} ns (Raster ${step} ns). `
+            + `Dem Satelliten fehlt mindestens eine Epoche im Fenster ab ${times[start]} ns.`,
+            {
+              sat, knoten: i, ist: ist.toString(), soll: soll.toString(),
+              fensterStartNs: times[start]!.toString(), rasterNs: step.toString(),
+            },
+          );
+        }
+      }
+
+      // τ relativ zum FENSTERANFANG, gemessen am Raster — nach der Prüfung oben
+      // ist das mit der Knotenlage 0…n−1 des Polynoms identisch.
+      const tau = ratDiv(ratSub(tNs, rat(times[start]!)), rat(step));
 
       const rOut: Rat[] = [], vOut: Rat[] = [];
       for (let axis = 0; axis < 3; axis++) {
