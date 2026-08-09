@@ -1,0 +1,17 @@
+Herkunft und Nutzungsbedingungen der Dateien in diesem Verzeichnis
+==================================================================
+
+Quelle:  International GNSS Service (IGS), Final orbit products,
+         bezogen ueber das Datenrepositorium des Bundesamts fuer
+         Kartographie und Geodaesie (BKG),
+         https://igs.bkg.bund.de/root_ftp/IGS/products/
+
+Rechtsgrundlage: IGS Data and Product Disclaimer and Terms of Use,
+         05.08.2020. Dies ist KEINE Lizenz: kein Rechtegewaehrungssatz,
+         keine Aussage zur Weitergabe.
+
+Auflagen: Namensnennung ist verbindlich.
+          Lebenskritische Verwendung ist ausdruecklich ausgeschlossen.
+
+Folge:    Diese Dateien werden NICHT in das Repository aufgenommen und
+          NICHT weitergegeben. Siehe Aktenvermerk CG-VERM-0100.
