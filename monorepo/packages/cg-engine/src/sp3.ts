@@ -6,10 +6,12 @@
  *                  CG-STD-0000 v0.8 §3 (I-R3 Determinismus),
  *                  IERS Conventions 2010 (ω_⊕),
  *                  SP3-c/SP3-d Formatdefinition (Hilla 2010 / IGS RINEX-WG)
+ * Kopfbefund reale Daten: CG-VERM-0101 v1.0 (Aktenvermerk, nicht normativ)
  * Tests: T-L3-SP3-001…006 (cg-testkit/suites/t-l3-sp3.ts), T-RELB-06x…08x (Vitest)
  * Paket: cg-engine (Erweiterung)
  * Autor: Kurt Bauer, Initiator & Hauptautor, ChronoGrid Systems
- * Stand: August 2026 — A4/Weg A, Schritt 3 (SP3-Vollausbau)
+ * Stand: August 2026 — A4/Weg A, Schritt 3 (SP3-Vollausbau),
+ *        Reader-Korrekturen R-1…R-4 nach CG-VERM-0101 §5 A
  *
  * Ersetzt den in relativistik.ts angekündigten Folgeschritt: die Ephemeride
  * kommt nicht mehr zwingend aus dem Kepler-Generator, sondern aus einer
@@ -42,6 +44,30 @@
  * gegen echte Produktdateien prüfen will, lädt sie lokal und hält die
  * Namensnennung selbst ein — die Kette liest sie, das Repository verteilt sie
  * nicht.
+ *
+ * ── Was der Kopfbefund realer IGS-Final-Dateien geändert hat ────────────────
+ * CG-VERM-0101 v1.0 hat den Kopf von zehn IGS-Final-Produkten gegen die
+ * Annahmen dieses Readers gestellt. Vier davon trugen nicht (§5 A, R-1…R-4):
+ *
+ *   R-1  Die Satellitenliste steht nie in einer einzelnen +-Zeile. IGS Final
+ *        führt stets FÜNF, auch bei 32 Satelliten; Restslots tragen '  0'.
+ *        Gelesen werden alle +-Zeilen bis zur ersten ++- oder Nicht-+-Zeile,
+ *        Füllslots verworfen, und die Liste gegen die deklarierte Zahl aus
+ *        Spalten 2–6 geprüft. Ohne diese Prüfung kennt der Reader entweder 17
+ *        statt 32 Satelliten oder sammelt 53 Pseudo-IDs ein — beides still.
+ *   R-2  IGS Final ist SP3-c, nicht SP3-d. Beide Versionszeichen sind gültig,
+ *        jedes andere wird benannt abgelehnt.
+ *   R-3  Die %c-Zeile wird ausgewertet (Zeitsystemkürzel, Spalten 10–12).
+ *        GPS ⇒ TAI = GPST + 19 s; jedes andere Kürzel ist ein Fehler. Dass
+ *        hier bisher GPS stand, war Glück, nicht Korrektheit.
+ *   R-4  999999.999999 im Uhrfeld ist der Fehlwert des Formats, nicht die
+ *        Zahl 999999,999999 µs. Er wird als 'nicht vorhanden' geführt.
+ *
+ * Nicht geschlossen ist damit die Knotenzuordnung (K-1…K-3) — der Reader wählt
+ * die Stützstellen weiterhin über u = (t−t₀)/Δ aus dem gefilterten Strom und
+ * klemmt am Dateirand, statt abzulehnen. IGS Final löst das nicht aus (keine
+ * Satellitenlücken), die letzte Epoche einer Tagesdatei aber sehr wohl: dort
+ * extrapoliert stateAt still um rund 80 m. Siehe CG-VERM-0101 §4.3 und §4.4.
  *
  * ── Warum die ECEF→ECI-Drehung entfällt ─────────────────────────────────────
  * f hängt nur von |r| und |v| ab (skalares 1PN-Modell). |r| ist drehinvariant.
@@ -96,6 +122,17 @@ export const SP3_VEL_DEN = 10_000_000n;
 
 /** Fehlwert des Formats für Uhrfelder (999999.999999 µs). */
 export const SP3_CLOCK_BAD = '999999.999999';
+
+/** Derselbe Fehlwert als Schwelle. Das Format kennzeichnet eine fehlende
+ *  Uhrlösung mit 999999.999999 µs = 1 s; eine echte Uhrkorrektur bleibt um
+ *  Größenordnungen darunter (µs-Bereich). Verglichen wird deshalb der Betrag
+ *  gegen diese Schwelle, nicht die Zeichenkette — R-4, CG-VERM-0101 §5 A. */
+export const SP3_CLOCK_BAD_RAT: Rat = rat(999_999_999_999n, 1_000_000n);
+
+/** Einziges unterstütztes Zeitsystemkürzel der %c-Zeile (Spalten 10–12).
+ *  Andere Kürzel (UTC, TAI, GLO, GAL, BDT, QZS) verlangen einen anderen
+ *  Offset als TAI = GPST + 19 s und werden abgelehnt statt geraten — R-3. */
+export const SP3_TIME_SYSTEM = 'GPS';
 
 /** ω_⊕ = 7,292115·10⁻⁵ rad/s — IERS Conventions 2010, mittlere Rotationsrate.
  *  Exakt rational; EOP/ERP werden bewusst nicht gelesen (siehe Dateikopf). */
@@ -237,6 +274,21 @@ function parseField(text: string, where: string): Rat {
   }
 }
 
+/**
+ * Uhrfeld eines P-Records → Rat, oder undefined bei fehlender Uhrlösung (R-4).
+ *
+ * Das Fehlwertmuster 999999.999999 steht in realen IGS-Final-Dateien: DOY 105
+ * trägt es dreimal (G25), DOY 107 durchgehend für G20 — die Positionsfelder
+ * sind dabei regulär besetzt. Der Wert darf deshalb weder einen Parse-Fehler
+ * auslösen noch als Zahl in eine Rechnung geraten (CG-VERM-0101 §4.2 F-05).
+ */
+function parseClockField(text: string, where: string): Rat | undefined {
+  const s = text.trim();
+  if (s === '' || s === SP3_CLOCK_BAD) return undefined;
+  const q = parseField(s, where);
+  return ratCmp(ratAbs(q), SP3_CLOCK_BAD_RAT) >= 0 ? undefined : q;
+}
+
 /** Kalenderfelder einer Epochenzeile → TAI-Nanosekunden. */
 function epochToTaiNs(
   y: bigint, mo: bigint, d: bigint, h: bigint, mi: bigint, secField: Rat, where: string,
@@ -266,17 +318,28 @@ export interface Sp3ParseOptions {
  * auf Leerzeichen liest solche Zeilen still falsch — genau die Sorte Fehler,
  * die erst bei echten Produktdateien auffällt.
  *
- * Kopfzeilen ohne Bedeutung für das Mapping (%c, %f, %i, ++) werden übergangen.
+ * Kopfzeilen ohne Bedeutung für das Mapping (%f, %i, ++) werden übergangen; die
+ * %c-Zeile dagegen wird ausgewertet (R-3) — ihr Zeitsystemkürzel entscheidet
+ * über den Offset zur TAI und darf nicht geraten werden.
  * Fehler: Formatverstoß → CG-E-001.007, fehlendes Feld → CG-E-001.002.
  */
 export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
   const lines = text.split(/\r?\n/);
-  if (lines.length === 0 || !/^#[cd]/.test(lines[0] ?? '')) {
+  const head = lines[0] ?? '';
+  // R-2: Versionszeichen c und d annehmen, alles andere benannt ablehnen.
+  // IGS Final ist SP3-c, nicht SP3-d — eine strenge Prüfung auf 'd' scheiterte
+  // an jeder realen Produktdatei (CG-VERM-0101 §4.2 F-02).
+  if (head[0] !== '#') {
     throw Errors.SyntaxError.abnfViolation(
-      'SP3: erste Zeile ist keine #c/#d-Kopfzeile', { kopf: (lines[0] ?? '').slice(0, 20) },
+      'SP3: erste Zeile ist keine #c/#d-Kopfzeile', { kopf: head.slice(0, 20) },
     );
   }
-  const head = lines[0]!;
+  if (head[1] !== 'c' && head[1] !== 'd') {
+    throw Errors.SyntaxError.abnfViolation(
+      `SP3: Version '#${head[1] ?? ''}' wird nicht unterstützt — nur #c und #d`,
+      { version: String(head[1] ?? ''), kopf: head.slice(0, 20) },
+    );
+  }
   const version = head[1] as 'c' | 'd';
   const modeChar = head[2];
   if (modeChar !== 'P' && modeChar !== 'V') {
@@ -294,9 +357,40 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
   const blocks: Sp3EpochBlock[] = [];
   let current: { tTaiNs: bigint; sats: Map<string, Sp3Record> } | null = null;
 
+  /** Satellitenzahl aus Spalten 2–6 der ersten +-Zeile; null = noch keine. */
+  let declaredSatCount: number | null = null;
+  /** Der +-Block ist abgeschlossen (erste Zeile mit ++ oder ohne +). */
+  let satBlockClosed = false;
+  /** Zeitsystemkürzel der ersten %c-Zeile; null = noch nicht gesehen. */
+  let timeSystem: string | null = null;
+
   const flush = (): void => {
     if (current) blocks.push({ tTaiNs: current.tTaiNs, sats: current.sats });
     current = null;
+  };
+
+  /**
+   * R-1: Der +-Block endet bei der ersten Zeile, die nicht mit + beginnt oder
+   * mit ++ beginnt. Erst dann steht die Satellitenliste fest und wird gegen die
+   * deklarierte Zahl geprüft.
+   *
+   * Die Prüfung ist der Kern von F-01: IGS Final führt stets fünf +-Zeilen,
+   * auch bei 32 Satelliten. Wer nach der ersten abbricht, kennt 17 statt 32 und
+   * kann G18…G32 stumm nicht auflösen; wer alle fünf liest, aber ' 0' nicht als
+   * Füllslot erkennt, sammelt 53 Pseudo-Satelliten ein. Beide Fälle fallen hier
+   * hart auf, statt später falsche Werte zu liefern.
+   */
+  const closeSatBlock = (li: number): void => {
+    if (satBlockClosed) return;
+    satBlockClosed = true;
+    if (declaredSatCount === null) return;   // Prüfung folgt nach der Schleife
+    if (satellites.length !== declaredSatCount) {
+      throw Errors.SyntaxError.abnfViolation(
+        `SP3: Kopf deklariert ${declaredSatCount} Satelliten, die +-Zeilen liefern `
+        + `${satellites.length} (Zeile ${li + 1})`,
+        { deklariert: declaredSatCount, gelesen: satellites.length, zeile: li + 1 },
+      );
+    }
   };
 
   for (let li = 1; li < lines.length; li++) {
@@ -318,16 +412,37 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
       }
       continue;
     }
-    if (line.startsWith('+ ') || line.startsWith('+\t') || /^\+ {0,3}\d/.test(line)) {
-      // Satellitenliste: 3-stellige IDs ab Spalte 10
+    if (line.startsWith('+') && !line.startsWith('++') && !satBlockClosed) {
+      // Satellitenliste über ALLE +-Zeilen: 3-stellige IDs ab Spalte 10 (Index 9),
+      // 17 Slots je Zeile. Ungenutzte Slots tragen '  0' und werden verworfen.
+      if (declaredSatCount === null) {
+        const decl = line.slice(1, 6).trim();     // Spalten 2–6 der ersten +-Zeile
+        if (!/^\d+$/.test(decl) || decl === '0') {
+          throw Errors.SyntaxError.abnfViolation(
+            `SP3: Satellitenzahl '${decl}' in Spalten 2–6 ist keine positive Ganzzahl `
+            + `(Zeile ${li + 1})`,
+            { feld: decl, zeile: li + 1 },
+          );
+        }
+        declaredSatCount = Number(decl);
+      }
       const body = line.slice(9);
       for (let k = 0; k + 3 <= body.length; k += 3) {
         const id = body.slice(k, k + 3).trim();
-        if (id !== '' && id !== '0' && !satellites.includes(id)) satellites.push(id);
+        if (id === '' || id === '0') continue;    // Füllslot
+        if (!satellites.includes(id)) satellites.push(id);
       }
       continue;
     }
-    if (line.startsWith('++') || line.startsWith('%c') || line.startsWith('%f') || line.startsWith('%i')) {
+    closeSatBlock(li);
+
+    if (line.startsWith('%c')) {
+      // R-3: Zeitsystemkürzel aus Spalten 10–12. Nur die erste %c-Zeile trägt
+      // es; die zweite ist Fortsetzung und steht durchgehend auf 'cc'.
+      if (timeSystem === null) timeSystem = line.slice(9, 12).trim();
+      continue;
+    }
+    if (line.startsWith('++') || line.startsWith('%f') || line.startsWith('%i')) {
       continue;
     }
     if (line.startsWith('/*')) {
@@ -340,6 +455,22 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
     if (line.startsWith('EOF')) { flush(); break; }
 
     if (line.startsWith('*')) {
+      // R-3: Der Offset TAI = GPST + 19 s wird erst angewandt, nachdem das
+      // Zeitsystem belegt ist. Kein stiller Default — bei jedem anderen Kürzel
+      // wäre der Offset still falsch (CG-VERM-0101 §4.2 F-03).
+      if (timeSystem === null) {
+        throw Errors.SyntaxError.missingField(
+          `SP3: keine %c-Zeile vor der ersten Epoche — Zeitsystem unbekannt (Zeile ${li + 1})`,
+          { zeile: li + 1 },
+        );
+      }
+      if (timeSystem !== SP3_TIME_SYSTEM) {
+        throw Errors.SyntaxError.abnfViolation(
+          `SP3: Zeitsystem '${timeSystem}' wird nicht unterstützt — nur ${SP3_TIME_SYSTEM} `
+          + `(TAI = GPST + ${TAI_MINUS_GPST_S} s)`,
+          { zeitsystem: timeSystem, zeile: li + 1 },
+        );
+      }
       flush();
       const tok = line.slice(1).trim().split(/\s+/);
       if (tok.length < 6) {
@@ -368,11 +499,21 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
       const x = f(4, 18), y = f(18, 32), z = f(32, 46);
       const clockRaw = line.length > 46 ? line.slice(46, 60).trim() : '';
 
+      // F-01: Ein Record für einen Satelliten, den der Kopf nicht führt, ist
+      // genau der Fall, den eine unvollständig gelesene +-Liste erzeugt. Er
+      // fällt hier auf, statt später eine stumme Lücke zu hinterlassen.
+      if (!satellites.includes(sat)) {
+        throw Errors.SyntaxError.abnfViolation(
+          `SP3: ${kind}-Record für '${sat}', der in den +-Zeilen nicht deklariert ist `
+          + `(Zeile ${li + 1})`,
+          { sat, zeile: li + 1 },
+        );
+      }
+
       if (kind === 'P') {
         // km → m: Feld/10⁶ km · 10³ m/km = Feldziffern/10³
         const toM = (q: Rat): Rat => ratMul(q, rat(1_000n));
-        const clockUs = clockRaw === '' || clockRaw === SP3_CLOCK_BAD
-          ? undefined : parseField(clockRaw, where);
+        const clockUs = parseClockField(clockRaw, where);
         const prev = current.sats.get(sat);
         current.sats.set(sat, {
           r: [toM(x), toM(y), toM(z)] as const,
@@ -391,11 +532,21 @@ export function parseSp3(text: string, opts: Sp3ParseOptions = {}): Sp3File {
         }
         current.sats.set(sat, { ...prev, v: [toMs(x), toMs(y), toMs(z)] as const });
       }
-      if (!satellites.includes(sat)) satellites.push(sat);
+      // Die Satellitenliste stammt ausschließlich aus dem Kopf (R-1); Records
+      // ergänzen sie nicht mehr, sondern werden gegen sie geprüft.
       continue;
     }
   }
   flush();
+
+  // R-1: Ohne +-Block gibt es keine belastbare Satellitenliste. Die Liste aus
+  // den Records zu rekonstruieren wäre genau der stille Weg, den F-01 meint.
+  if (declaredSatCount === null) {
+    throw Errors.SyntaxError.missingField(
+      'SP3: Kopf enthält keine +-Zeile mit Satellitenliste', {},
+    );
+  }
+  closeSatBlock(lines.length - 1);
 
   if (blocks.length === 0) {
     throw Errors.SyntaxError.missingField('SP3: Datei enthält keine Epochen', {});
