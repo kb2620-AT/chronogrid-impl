@@ -1,24 +1,37 @@
 /**
  * cg-testkit/src/suites/t-l3-sp3.ts
- * L3-C (Fortsetzung): SP3-Ephemeriden — T-L3-SP3-001…006
+ * L3-C (Fortsetzung): SP3-Ephemeriden — T-L3-SP3-001…007 aktiv, 008 pending
+ *   (T-L3-SP3-008 liegt als Stub in t-l3-pending.ts — dort läuft die Zählung.)
  *
  * Normative Basis: CG-STD-3100 v1.6 Kap. 8.6 (Klasse-B-Mapping F[W](τ)),
  *                  CG-STD-0000 v0.8 §3, I-R2/I-R3,
  *                  SP3-c/SP3-d Formatdefinition, IERS Conventions 2010
  * Implementierung: cg-engine/src/sp3.ts
  *
+ * Datenquelle T-L3-SP3-007:
+ *   International GNSS Service (IGS), Final orbit product
+ *   IGS0OPSFIN_20261050000_01D_15M_ORB.SP3, bezogen ueber BKG.
+ *   (Attribution verbindlich nach CG-VERM-0100.)
+ *
  * Mit A4/Weg A Schritt 3 stammt die Ephemeride nicht mehr zwingend aus dem
  * Kepler-Generator, sondern aus einer SP3-Bahndatei. Damit ist die in
  * t-l3-rk45.ts benannte Einschränkung „Offline-Kepler-Fixture statt SP3-Import"
  * aufgehoben — die Kette Datei → Interpolation → Mapping ist gebaut und geprüft.
  *
- * ── Was diese Gruppe NICHT belegt ───────────────────────────────────────────
- * Die Fixture wird vom eigenen Writer erzeugt (lizenzfrei, kein IGS-Byte). Ein
- * Lauf gegen ein echtes heruntergeladenes IGS-Final-Produkt hat nicht
- * stattgefunden; dessen Kopfvarianten, Konstellationskürzel und Ausreißer sind
- * damit ungeprüft. „SP3-Kette implementiert" heißt hier: das Format wird
- * geschrieben und gelesen, die Interpolation ist exakt, die Physik trifft die
- * analytischen Referenzen. Es heißt nicht „gegen IGS-Produktdateien verifiziert".
+ * ── Was diese Gruppe belegt und was nicht ───────────────────────────────────
+ * T-L3-SP3-001…006 arbeiten auf einer Fixture des eigenen Writers (lizenzfrei,
+ * kein IGS-Byte). T-L3-SP3-007 läuft als einziger gegen ein echtes,
+ * heruntergeladenes IGS-Final-Produkt und deckt damit Kopfvarianten,
+ * Konstellationskürzel und reale Bahndaten mit ab — aber nur, wenn die Datei
+ * lokal vorliegt. Sie ist per .gitignore ausgeschlossen; fehlt sie, überspringt
+ * sich der Test mit Meldung, und die Gruppe belegt wieder nur das, was
+ * T-L3-SP3-001…006 belegen.
+ *
+ * „SP3-Kette implementiert" heißt weiterhin: das Format wird geschrieben und
+ * gelesen, die Interpolation ist exakt, die Physik trifft die analytischen
+ * Referenzen. Ein einzelner Satellit (G01) aus einem einzelnen Tagesprodukt ist
+ * kein Nachweis über die Breite realer Produkte — andere Konstellationen,
+ * Manöver, Ausreißer und Kopfvarianten anderer Analysezentren bleiben ungeprüft.
  *
  * ── Gemessene Zielkonfiguration ─────────────────────────────────────────────
  * IGS Final, 900-s-Raster, Lagrange Ordnung 9, konstantes ω um z, v = v_ECEF+ω×r.
@@ -34,8 +47,11 @@
  * (siehe T-L3-RK45-006).
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { TestCase } from '../runner.js';
-import { rat, ratAbs, ratSub, ratCmp } from 'cg-engine/exakt.js';
+import { type Rat, rat, ratAbs, ratSub, ratCmp, ratToNumber } from 'cg-engine/exakt.js';
 import {
   type ExactWorldline,
   executeClassBMapping, analyticMeanRateExact,
@@ -43,6 +59,7 @@ import {
 } from 'cg-engine/relativistik.js';
 import {
   writeSp3d, parseSp3, sp3Worldline, compareMagnitudes, SP3_LAGRANGE_DEGREE,
+  withinDistance, normSquaredExact,
 } from 'cg-engine/sp3.js';
 
 const NS = 1_000_000_000n;
@@ -67,6 +84,125 @@ function deviation(
 ): { dr: number; dv: number; df: number } {
   const m = compareMagnitudes(exact, approx, startNs, spanNs, samples);
   return { dr: m.maxDr, dv: m.maxDv, df: m.maxDf };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-L3-SP3-007: Ausdünnung gegen ein echtes IGS-Final-Produkt
+//
+// Datenquelle:
+//   International GNSS Service (IGS), Final orbit product
+//   IGS0OPSFIN_20261050000_01D_15M_ORB.SP3, bezogen ueber BKG.
+//
+// Die Datei liegt NICHT im Repository (.gitignore schließt IGS-Produkte aus).
+// Der Pfad wird über import.meta.url aufgelöst, nicht über das
+// Arbeitsverzeichnis — der Test soll unabhängig davon laufen, von wo die CLI
+// gestartet wurde.
+const IGS_DATEI = 'IGS0OPSFIN_20261050000_01D_15M_ORB.SP3';
+const IGS_PFAD = resolve(
+  dirname(fileURLToPath(import.meta.url)), '../../../../fixtures/igs-local', IGS_DATEI,
+);
+const IGS_VORHANDEN = existsSync(IGS_PFAD);
+
+/** Antwort, wenn das Produkt fehlt — identisch in run() und expected. */
+const SP3_007_UEBERSPRUNGEN = {
+  status: 'übersprungen',
+  grund: `${IGS_DATEI} liegt nicht unter fixtures/igs-local/ — IGS-Produkte sind `
+       + `per .gitignore ausgeschlossen; scripts/internal/setup-igs-fixture.sh legt sie an`,
+};
+
+/** Bahnschwelle aus CG-VERM-0101. Die Δv-Schwelle gehört zu T-L3-SP3-008. */
+const SCHWELLE_DR = rat(1n, 5n);              // 0,20 m
+
+/** |a − b| als Float — nur für die Meldung, nie für die Prüfung. */
+function abstand(a: readonly [Rat, Rat, Rat], b: readonly [Rat, Rat, Rat]): number {
+  return Math.sqrt(ratToNumber(normSquaredExact([
+    ratSub(a[0], b[0]), ratSub(a[1], b[1]), ratSub(a[2], b[2]),
+  ]), 24));
+}
+
+/**
+ * Ausdünnung 900 s → 1800 s und Vergleich an den ausgelassenen Epochen.
+ *
+ * Warum eine eigene Bahnschwelle und nicht die Ratentoleranz: f hängt so
+ * schwach von der Bahnlage ab, dass 80 m Bahnfehler nur 6,6e-15 s/s erzeugen —
+ * 150-fach unter der Toleranz von 1e-12. Ein Interpolant könnte die Bahn also
+ * grob verfehlen und die Ratenprüfung trotzdem bestehen. Dasselbe Argument
+ * steht hinter T-L3-RK45-006.
+ *
+ * Geprüft wird hier NUR Δr. Der Grund ist die Beweislage, nicht die Bequem-
+ * lichkeit: an einer ausgelassenen Epoche sitzt der volle Interpolant auf einem
+ * Knoten und gibt den tabellierten Wert zurück (Kronecker, T-RELB-073) — die
+ * Referenz ist echte Tabellenwahrheit. Für Δv gilt das nicht, weil IGS Final
+ * keine Velocity-Records führt; dort stünden zwei abgeleitete Größen
+ * gegeneinander. Dieser Vergleich liegt als T-L3-SP3-008 pending.
+ *
+ * Kernbereich: der ausgedünnte Interpolant hat 48 Knoten im 1800-s-Raster, fünf
+ * Stützstellen je Seite sind 2,5 h — gültig ist [02:00, 21:30) (K-3). Die
+ * Vergleichspunkte liegen deshalb bei 02:15 … 21:15. Punkte davor oder danach
+ * lehnt K-3 zu Recht ab; sie sind keine Testfälle.
+ */
+function ausduennungsprobe() {
+  const SAT = 'G01';
+  const voll = parseSp3(readFileSync(IGS_PFAD, 'utf8'));
+  const Wvoll = sp3Worldline(voll, { satellite: SAT });
+
+  // Jede zweite Epoche. `grid` wird mitgeschleppt und nur für info.gapsTaiNs
+  // gelesen — deshalb wird unten geprüft, dass G01 im Original lückenlos ist.
+  const duenn = {
+    ...voll,
+    blocks: voll.blocks.filter((_, i) => i % 2 === 0),
+    intervalNs: voll.intervalNs * 2n,
+  };
+  const Wduenn = sp3Worldline(duenn, { satellite: SAT });
+
+  // Gültiger Kern des ausgedünnten Interpolanten, in Indizes der VOLLEN Datei:
+  // Knoten k des dünnen Rasters ⇔ Index 2k des vollen.
+  const halb = 4, letzterDuenn = duenn.blocks.length - 1 - 5;
+  const vonVoll = 2 * halb, bisVoll = 2 * (letzterDuenn + 1);   // [02:00, 21:30)
+
+  let maxDr = 0, drOk = true, punkte = 0;
+  let ersteZeit = 0n, letzteZeit = 0n;
+  for (let i = 1; i < voll.blocks.length; i += 2) {             // ausgelassene Epochen
+    if (i <= vonVoll || i >= bisVoll) continue;
+    const t = rat(voll.blocks[i]!.tTaiNs);
+    const a = Wduenn.stateAt(t), b = Wvoll.stateAt(t);
+    // Die Schwellenprüfung ist exakt rational, ohne Wurzel (withinDistance
+    // vergleicht |a−b|² gegen tol²). Float tritt nur in der Meldung auf.
+    if (!withinDistance(a.r, b.r, SCHWELLE_DR)) drOk = false;
+    maxDr = Math.max(maxDr, abstand(a.r, b.r));
+    if (punkte === 0) ersteZeit = voll.blocks[i]!.tTaiNs;
+    letzteZeit = voll.blocks[i]!.tTaiNs;
+    punkte++;
+  }
+
+  // T-3: die letzte Epoche der Tagesdatei hat rechts keine fünf Stützstellen
+  // mehr — nach K-3 muss die Auswertung dort abgelehnt werden, statt still ein
+  // unzentriertes Fenster zu benutzen.
+  let letzterCode = 'kein Fehler';
+  try { Wvoll.stateAt(rat(voll.blocks[voll.blocks.length - 1]!.tTaiNs)); }
+  catch (e: any) { letzterCode = e.code; }
+
+  console.log(
+    `     ↳ T-L3-SP3-007: ${punkte} Vergleichspunkte, `
+    + `|Δr|max = ${maxDr.toExponential(3)} m (Schwelle 2,0e-1)`,
+  );
+
+  return {
+    status: 'geprüft',
+    satellit: SAT,
+    // Reale Produktdatei, nicht der eigene Writer: Version, Modus, Bestückung
+    version: voll.version,
+    modus: voll.mode,
+    ohneLuecken: Wvoll.info.gapsTaiNs.length === 0,
+    rasterVollS: Number(voll.intervalNs / NS),
+    rasterDuennS: Number(duenn.intervalNs / NS),
+    knotenDuenn: duenn.blocks.length,
+    vergleichspunkte: punkte,
+    ersteVergleichsstunde: Number((ersteZeit - voll.blocks[0]!.tTaiNs) / (60n * NS)),
+    letzteVergleichsstunde: Number((letzteZeit - voll.blocks[0]!.tTaiNs) / (60n * NS)),
+    bahnUnterSchwelle: drOk,
+    letzteEpocheAbgelehnt: letzterCode,
+  };
 }
 
 export const T_L3_SP3: TestCase[] = [
@@ -203,4 +339,34 @@ export const T_L3_SP3: TestCase[] = [
       return { codes };
     },
     expected: { codes: ['CG-E-001.007', 'CG-E-005.003', 'CG-E-001.002', 'CG-E-008.003'] } },
+
+  { id: 'T-L3-SP3-007', level: 3,
+    description: '[L3-C] SP3: Ausdünnung gegen IGS-Final — Bahnlage Δr (echtes Produkt, G01, 900→1800 s)',
+    // Der erste Lauf der Gruppe gegen ein echtes IGS-Produkt statt gegen die
+    // eigene Fixture. Prüfprinzip: aus jeder zweiten Epoche einen Interpolanten
+    // bauen und ihn an den ausgelassenen Epochen gegen den vollen Interpolanten
+    // stellen — die ausgelassenen Werte sind tabellierte Wahrheit, an einem
+    // Knoten gibt Lagrange den Stützwert zurück (Kronecker, T-RELB-073).
+    //
+    // Fehlt die Datei, überspringt sich der Test: die IGS-Produkte sind per
+    // .gitignore ausgeschlossen, die CI muss trotzdem grün bleiben. Der
+    // Unterschied ist am Ergebnisfeld `status` ablesbar, nicht nur am Häkchen.
+    run: () => (IGS_VORHANDEN ? ausduennungsprobe() : SP3_007_UEBERSPRUNGEN),
+    expected: IGS_VORHANDEN
+      ? {
+          status: 'geprüft',
+          satellit: 'G01',
+          version: 'c',                    // IGS Final ist SP3-c, nicht SP3-d (R-2)
+          modus: 'P',                      // keine Velocity-Records (R-4/T-L3-SP3-003)
+          ohneLuecken: true,
+          rasterVollS: 900,
+          rasterDuennS: 1800,
+          knotenDuenn: 48,
+          vergleichspunkte: 39,
+          ersteVergleichsstunde: 135,      // 02:15 nach Dateibeginn [min]
+          letzteVergleichsstunde: 1275,    // 21:15 nach Dateibeginn [min]
+          bahnUnterSchwelle: true,
+          letzteEpocheAbgelehnt: 'CG-E-005.003',   // K-3 auf realen Daten
+        }
+      : SP3_007_UEBERSPRUNGEN },
 ];

@@ -42,7 +42,7 @@ console.log(`│  ChronoGrid Conformance Testkit — CG-STD-5100 v1.4           
 console.log(`│  Sprint 11-A: Standardisierungsreife                         │`);
 console.log(`│  Level: ${level} | Aktiv: ${String(filtered.length).padEnd(4)} | Skip: ${String(skippedCount).padEnd(4)} | Gesamt: ${allTests.length+skipTests.length}   │`);
 console.log(`└──────────────────────────────────────────────────────────────┘\n`);
-if(skippedCount>0){console.log(`  ⏭  ${skippedCount} pending-Tests übersprungen (${PENDING_SUMMARY.pending_v12} pending-v1.2, ${PENDING_SUMMARY.pending_sprint_11b} pending-Sprint-11-B)\n`);}
+if(skippedCount>0){console.log(`  ⏭  ${skippedCount} pending-Tests übersprungen (${PENDING_SUMMARY.pending_v12} pending-v1.2, ${PENDING_SUMMARY.pending_sprint_11b} pending-Sprint-11-B, ${PENDING_SUMMARY.pending_referenz} pending-Referenz)\n`);}
 const results=await runTests(allTests,level);
 await teardown();
 if(doReport){
@@ -63,6 +63,7 @@ if(doReport){
     pending:{
       pending_v12:PENDING_SUMMARY.pending_v12,
       pending_sprint_11b:PENDING_SUMMARY.pending_sprint_11b,
+      pending_referenz:PENDING_SUMMARY.pending_referenz,
       details:{
         worm_oais:PENDING_SUMMARY.worm_oais,
         geo_redundancy:PENDING_SUMMARY.geo_redundancy,
@@ -70,6 +71,7 @@ if(doReport){
         graphql_sub:PENDING_SUMMARY.graphql_sub,
         event_bus_mtls:PENDING_SUMMARY.event_bus_mtls,
         anchoring_audit:PENDING_SUMMARY.anchoring_audit,
+        sp3_velocity_ref:PENDING_SUMMARY.sp3_velocity_ref,
       },
     },
     results:results.map(r=>({id:r.id,level:r.level,passed:r.passed,durationMs:r.durationMs})),
@@ -87,6 +89,6 @@ console.log(`Bestanden:      ${passed}`);
 console.log(`Fehlgeschlagen: ${failed}`);
 for(const[l,v]of Object.entries(byLevel)){if(Number(l)<=level)console.log(`Level ${l}:        ${v.p}/${v.t}`);}
 const ok=failed===0;
-if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skippedCount} pending\x1b[0m`);console.log(`  Klasse-B/RK45 + SP3-Kette aktiv (T-L3-RK45-001–006, T-L3-SP3-001–006, exakte BigInt-Arithmetik); ${skippedCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2)\n`);}
+if(ok){console.log(`\n\x1b[32m✓ LEVEL ${level} (Kernpfade) KONFORM — ${passed} aktiv/${results.length} bestanden, ${skippedCount} pending\x1b[0m`);console.log(`  Klasse-B/RK45 + SP3-Kette aktiv (T-L3-RK45-001–006, T-L3-SP3-001–007, exakte BigInt-Arithmetik); ${skippedCount} Stubs dokumentiert offen (Sprint 11-B / CG-STD-4100 v1.2 / fehlende Referenz)\n`);}
 else{console.log(`\n\x1b[31m✗ LEVEL ${level} NICHT KONFORM — ${failed} fehlgeschlagen\x1b[0m\n`);}
 process.exit(ok?0:1);

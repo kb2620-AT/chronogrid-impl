@@ -8,6 +8,10 @@
  *   L3-F   (GraphQL Subscriptions):T-L3-SUB-001–005   → pending Sprint 11-B
  *   L3-G   (Event-Bus/mTLS):       T-L3-EBUS-001–005  → pending Sprint 11-B
  *   L3-H   (Anchoring/Audit):      T-L3-ANCH-001–005  → pending Sprint 11-B
+ *   L3-C   (SP3 Δv-Referenz):      T-L3-SP3-008       → pending Referenz
+ *
+ * Die letzte Gruppe fällt aus dem Muster: dort fehlt keine Implementierung,
+ * sondern eine Referenz, gegen die gemessen werden könnte. Begründung am Stub.
  *
  * Nicht mehr hier: L3-C (MissionTime/RK45, T-L3-RK45-001–005). Die Gruppe ist
  * mit A4/Weg A Schritt 2 aktiv geworden und liegt in suites/t-l3-rk45.ts.
@@ -170,19 +174,61 @@ export const T_L3_ANCH: TestCase[] = [
     skipReason:'Anchor — nicht implementiert, Sprint 11-B' },
 ];
 
+// ── L3-C: SP3-Geschwindigkeitsvergleich (T-L3-SP3-008) ───────────────────────
+//
+// Sonderfall in dieser Datei: nicht „Implementierung fehlt", sondern „Referenz
+// fehlt". Der Code läuft, die Messung ist gemacht — es gibt nur nichts, wogegen
+// sie zählt.
+//
+// T-L3-SP3-007 dünnt ein IGS-Final-Produkt von 900 s auf 1800 s aus und prüft
+// den Interpolanten an den ausgelassenen Epochen. Für die Bahnlage ist das ein
+// sauberer Nachweis: der volle Interpolant sitzt dort auf einem Knoten und gibt
+// den tabellierten Wert zurück (Kronecker, T-RELB-073), die Referenz ist echte
+// Tabellenwahrheit — gemessen 1,360e-1 m gegen die Schwelle 0,20 m, bestanden.
+//
+// Für die Geschwindigkeit trägt dieselbe Konstruktion nicht. IGS Final enthält
+// keine Velocity-Records (R-4); v entsteht auf beiden Seiten aus der Ableitung
+// des Positionsinterpolanten. Verglichen würden also zwei abgeleitete Größen,
+// von denen die „Referenz" selbst einen Ableitungsfehler trägt — und die
+// Ableitung eines Interpolanten konvergiert eine Ordnung langsamer als sein
+// Wert, weshalb die Rasterverdopplung sie härter trifft als die Position.
+//
+// Gemessen wurde 7,035e-6 m/s gegen die Schwelle 5e-6 m/s (Faktor 1,41). Ob das
+// eine zu enge Schwelle oder ein zu grobes Raster ist, lässt sich ohne
+// tabellierte Geschwindigkeit nicht entscheiden. Die Schwelle bleibt bei 5e-6;
+// offen ist die Referenz, nicht der Wert.
+//
+// Auflösbar mit einem Produkt, das V-Records führt (SP3 mode 'V'), oder gegen
+// eine unabhängig integrierte Bahn.
+export const T_L3_SP3_PENDING: TestCase[] = [
+  // Felder wie bei den Nachbarn gesetzt; `suite`/`skip`/`skipReason` stehen seit
+  // der Interface-Ergänzung in runner.ts und erzeugen kein TS2353 mehr.
+  { id:'T-L3-SP3-008', suite:'T-L3-PENDING', level:3,
+    description:'[pending-Referenz / L3-C] SP3: Δv der Ausdünnung 900→1800 s gegen tabellierte Geschwindigkeit',
+    run:()=>{throw Object.assign(new Error('pending-Referenz: IGS Final führt keine Velocity-Records'),{pending:true});},
+    expected:'pending-Referenz', skip:true,
+    skipReason:'Δv-Vergleich — IGS Final ohne V-Records, keine tabellierte Referenz; gemessen 7,035e-6 m/s gegen Schwelle 5e-6 m/s' },
+];
+
 // ── Export ────────────────────────────────────────────────────────────────────
 export const ALL_T_L3_PENDING: TestCase[] = [
   ...T_L3_WORM, ...T_L3_GEO, ...T_L3_SUB, ...T_L3_EBUS, ...T_L3_ANCH,
+  ...T_L3_SP3_PENDING,
 ];
 
 export const PENDING_SUMMARY = {
-  total:              ALL_T_L3_PENDING.length,  // 25
+  total:              ALL_T_L3_PENDING.length,  // 26
   worm_oais:          T_L3_WORM.length,         //  5 — pending-v1.2 (OP-07)
   geo_redundancy:     T_L3_GEO.length,          //  5 — pending-v1.2 (OP-08)
   rk45_classb:        0,                        //  0 — aktiv, siehe t-l3-rk45.ts
   graphql_sub:        T_L3_SUB.length,          //  5 — pending Sprint 11-B
   event_bus_mtls:     T_L3_EBUS.length,         //  5 — pending Sprint 11-B
   anchoring_audit:    T_L3_ANCH.length,         //  5 — pending Sprint 11-B
+  sp3_velocity_ref:   T_L3_SP3_PENDING.length,  //  1 — pending Referenz (L3-C)
   pending_v12:        10,
   pending_sprint_11b: 15,
+  // Eigene Kategorie: hier fehlt keine Implementierung, sondern eine Messgröße,
+  // gegen die geprüft werden könnte. Nicht mit den beiden oberen vermischen —
+  // die verschwinden mit einem Sprint, diese hier mit einer Datenquelle.
+  pending_referenz:   T_L3_SP3_PENDING.length,  //  1
 } as const;
