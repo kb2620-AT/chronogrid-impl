@@ -72,11 +72,36 @@
  *   K-2  Der Rasterbefund (Sp3GridReport, Feld `grid`) hält fehlende Records
  *        und rasterfremde Epochen fest, ohne zu werfen — die Datei bleibt
  *        lesbar, nur die Auswertung im betroffenen Fenster scheitert.
+ *   K-3  stateAt klemmt das Fenster am Dateirand NICHT mehr in den gültigen
+ *        Bereich, sondern lehnt ab, wenn das symmetrische Fenster unvollständig
+ *        ist. Nutzbar ist damit nicht die ganze Datei, sondern ihr Kern — bei
+ *        96 Epochen im 15-min-Raster [01:00, 22:45), also je vier Intervalle
+ *        weniger an beiden Rändern. Das ist keine Einschränkung der
+ *        Implementierung, sondern die Reichweite der Daten.
  *
- * Offen bleibt K-3: stateAt klemmt das Fenster am Dateirand in den gültigen
- * Bereich, statt abzulehnen. IGS Final löst die Knotenverschiebung nicht aus
- * (keine Satellitenlücken), die letzte Epoche einer Tagesdatei aber sehr wohl:
- * dort extrapoliert stateAt still um rund 80 m. Siehe CG-VERM-0101 §4.4.
+ *        Zur Größenordnung, gemessen und nicht geschätzt: Referenz ist das
+ *        zentrierte Fenster über die Tagesgrenze hinweg (IGS Final Tag 105 +
+ *        106 zusammengehängt, lückenlos, Satellit G01). Der geklemmte Pfad
+ *        wich davon im nun abgelehnten Band um höchstens 5,9e-3 m ab
+ *        (Maximum bei 23:30+½Δ); an der letzten Epoche selbst um exakt null,
+ *        weil die Klemmung dort τ = 9 ergibt und Lagrange auf einem Knoten den
+ *        Stützwert zurückgibt (Kronecker, T-RELB-073) — das gilt für jede
+ *        Datei, unabhängig von den Daten. Der geklemmte Pfad hat also nie
+ *        extrapoliert, sondern unzentriert interpoliert, mit τ stets in [0, 9].
+ *
+ *        Die in CG-VERM-0101 §4.4 genannten „rund 80 m an der letzten Epoche"
+ *        sind damit widerlegt; die Größenordnung gehört zu echter
+ *        Extrapolation hinter dem Dateiende (dasselbe Randfenster über seinen
+ *        Träger hinaus: τ = 10 → 0,56 m, τ = 13 → 157 m), und dieser Pfad war
+ *        schon vor K-3 durch die Bereichsprüfung t > tN abgelehnt.
+ *
+ *        K-3 steht trotzdem, aus einem anderen Grund als der Fehlergröße: das
+ *        gemessene Fehlerbudget der Kette (Kopf von t-l3-sp3.ts) gilt für das
+ *        zentrierte Fenster. Ein geklemmtes ist eine andere Größe, deren
+ *        Fehler niemand beziffert hat, und es rückt den Auswertepunkt auf die
+ *        äußere Flanke des Polynoms, wo das Wachstum oben beginnt. Eine
+ *        Auswertung ohne vollständige Nachbarschaft ist keine Aussage über
+ *        die Bahn, sondern eine über den Rand des Interpolanten.
  *
  * ── Warum die ECEF→ECI-Drehung entfällt ─────────────────────────────────────
  * f hängt nur von |r| und |v| ab (skalares 1PN-Modell). |r| ist drehinvariant.
@@ -735,10 +760,12 @@ export interface Sp3Worldline extends ExactWorldline {
 /**
  * Weltlinie W aus einer SP3-Datei (CG-STD-3100 §8.6, worldline_ref).
  *
- * Das Fenster ist zentriert und wird an den Dateirändern in den gültigen
- * Bereich geschoben, statt zu extrapolieren. Zeiten außerhalb der Datei sind
- * ein Fehler (CG-E-005.003) — eine Ephemeride, die über ihren Rand hinaus
- * befragt wird, liefert keine Aussage, sondern ein Polynomartefakt.
+ * Das Fenster ist zentriert und wird NICHT verschoben (K-3). Beides ist ein
+ * Fehler (CG-E-005.003), aber aus verschiedenen Gründen: Zeiten außerhalb der
+ * Datei würden extrapolieren, also ein Polynomartefakt liefern; Zeiten im
+ * Randband der Datei würden unzentriert interpolieren — ein kleiner, aber
+ * unbezifferter Fehler außerhalb des gemessenen Budgets. Beides ist keine
+ * Aussage über die Bahn, und beides blieb zuvor unbemerkt.
  */
 export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3Worldline {
   const points = opts.points ?? SP3_LAGRANGE_POINTS;
@@ -800,6 +827,20 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
   const perSec = ratDiv(rat(NS), rat(step));
   const half = Math.floor((points - 1) / 2);
 
+  /**
+   * K-3: Der auswertbare Kern der Datei, ausgedrückt in Knotenindizes.
+   *
+   * Liegt t zwischen den Knoten k und k+1, ist das Fenster k−half … k−half+n−1.
+   * Vollständig vorhanden ist es genau für kMin ≤ k ≤ kMax. In Zeit gelesen:
+   * gültig ist [times[kMin], times[kMax+1]) — halboffen, denn t = times[kMax+1]
+   * führt bereits auf k = kMax+1 und ließe rechts eine Stützstelle zu wenig.
+   *
+   * Ordnung 9 (n = 10, half = 4) auf einer Tagesdatei mit 96 Epochen:
+   * kMin = 4, kMax = 90, nutzbar ist [01:00, 22:45), letzter Rasterpunkt 22:30.
+   */
+  const kMin = half;
+  const kMax = times.length - 1 - (points - 1 - half);
+
   const ref = opts.ref
     ?? `urn:cg:worldline:sp3:${sat}:ord${points - 1}:${source === 'records' ? 'v-rec' : 'v-deriv'}`;
 
@@ -830,15 +871,56 @@ export function sp3Worldline(file: Sp3File, opts: Sp3WorldlineOptions = {}): Sp3
         const mid = (lo + hi + 1) >> 1;
         if (times[mid]! * tNs.d <= tNs.n) lo = mid; else hi = mid - 1;
       }
-      let start = lo - half;
-      if (start < 0) start = 0;
-      if (start + points > times.length) start = times.length - points;
+      /**
+       * K-3: Das symmetrische Fenster muss VOLLSTÄNDIG vorliegen — sonst
+       * Abbruch, kein Verschieben.
+       *
+       * Bis K-2 wurde `start` hier an den Dateirand geklemmt. Das Fenster war
+       * dann nicht mehr zentriert, sondern einseitig: der Auswertepunkt rutschte
+       * auf τ ≈ 0 bzw. τ ≈ n−1, an die äußere Flanke des Polynomträgers.
+       *
+       * Was das kostete, ist gemessen (Herleitung im Dateikopf unter K-3): auf
+       * echten IGS-Final-Daten höchstens 5,9e-3 m im gesamten Randband, an der
+       * letzten Epoche exakt null — dort liegt τ = 9 auf einem Knoten, und
+       * Lagrange gibt auf einem Knoten den Stützwert zurück. Der geklemmte Pfad
+       * war also kein Extrapolationsfehler, sondern eine unzentrierte
+       * Interpolation mit kleinem, aber unbeziffertem Fehler.
+       *
+       * Genau das ist der Grund für den Abbruch: das Fehlerbudget der Kette ist
+       * für zentrierte Fenster gemessen. Wo die Nachbarschaft fehlt, gibt es
+       * keinen Wert mit bekannter Güte — und der Aufrufer merkte nichts davon.
+       * Ein benannter Fehler ist die einzige ehrliche Antwort.
+       *
+       * Das kostet an beiden Rändern half bzw. (n−1−half) Intervalle — bei
+       * Ordnung 9 je vier. Diese Reichweite gehört den Daten, nicht dem Code;
+       * sie lässt sich nur durch mehr Epochen vergrößern (bei Tagesdateien:
+       * die Nachbartage anhängen).
+       */
+      if (lo < kMin || lo > kMax) {
+        throw Errors.MappingError.refPointOutOfExtent(
+          `SP3: t = ${ratToNumber(tNs, 0).toFixed(0)} ns liegt im Randbereich von ${sat} — `
+          + `Ordnung ${points - 1} braucht ${points} Stützstellen (${half} links, `
+          + `${points - 1 - half} rechts), an dieser Stelle fehlen sie. Auswertbar ist `
+          + `[${times[kMin]}, ${kMax + 1 < times.length ? times[kMax + 1]! : tN + 1n}) ns, `
+          + `letzter gültiger Rasterpunkt ${times[kMax]} ns.`,
+          {
+            sat, points, knoten: lo, kMin, kMax,
+            kernVonNs: times[kMin]!.toString(), letzterKnotenNs: times[kMax]!.toString(),
+            t0: t0.toString(), t1: tN.toString(),
+          },
+        );
+      }
+      const start = lo - half;
 
       // K-1: Das gewählte Fenster muss äquidistant im Sollraster liegen. Trifft
       // das nicht zu, fehlt dem Satelliten mindestens eine Epoche innerhalb des
       // Fensters — dann sind die Knoten nicht die, die das Polynom unterstellt,
       // und lagrangeValueAndDerivative (Knoten 0…n−1) wäre schlicht das falsche
       // Modell. Abbruch statt eines still verschobenen Ergebnisses.
+      //
+      // K-3 hat die Reihenfolge geradegezogen: die Prüfung lief zuvor NACH der
+      // Klemmung und beurteilte damit ein Fenster, das gar nicht das um lo
+      // zentrierte war. Jetzt wird geprüft, was auch gerechnet wird.
       for (let i = 1; i < points; i++) {
         const soll = BigInt(i) * step;
         const ist = times[start + i]! - times[start]!;
