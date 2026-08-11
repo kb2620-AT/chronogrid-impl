@@ -28,7 +28,7 @@ jobs:
         working-directory: monorepo
         run: pnpm install --no-frozen-lockfile
 
-      - name: Run cg-testkit CLI (Level 3) -- 241/241 (101 L1 + 96 L2 + 44 L3)
+      - name: Run cg-testkit CLI (Level 3) -- 248/248 (104 L1 + 99 L2 + 45 L3)
         working-directory: monorepo
         run: |
           node --import tsx/esm packages/cg-testkit/src/cli.ts --level 3
