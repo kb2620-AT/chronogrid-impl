@@ -2,7 +2,8 @@ import type{TestCase}from'../runner.js';
 import{parseDomain}from'cg-ctddl/parser.js';
 import{encodeCGTA,decodeCGTA,computeMachineId,computeCGFI,createTimepoint,allenRelation,compareValues,verifyDeterminism,convertValue,getDomain,listDomainKeys,nowTaiNs}from'cg-engine/engine.js';
 import{isLeapYear,daysInMonth,gregorianToSeconds,secondsToISO8601,iso8601ToSeconds}from'cg-engine/gregorian.js';
-import{utcToTai,taiToUtc,gpsToTai,taiToGps,CURRENT_TAI_MINUS_UTC}from'cg-engine/mapping.js';
+import{utcToTai,taiToUtc,gpsToTai,taiToGps,taiMinusUtcAt,CURRENT_TAI_MINUS_UTC}from'cg-engine/mapping.js';
+import{rat}from'cg-engine/exakt.js';
 import{Errors}from'cg-types/errors.js';
 export const engineTests:TestCase[]=[
   {id:'T-L1-001',level:1,description:'CGTA encode TAI',run:()=>encodeCGTA({domain:'TAI',value:1742041937n,version:1}),expected:'CG:TAI:1742041937/v1'},
@@ -64,6 +65,23 @@ export const engineTests:TestCase[]=[
   {id:'T-L1-057',level:1,description:'MachineID Golden Vector',run:()=>computeMachineId('TAI',0n,'1.0'),expected:'f060329799216feb80f3561f8aeff77b64531737ea1da8624c391975b9ce89da'},
   {id:'T-L1-058',level:1,description:'Domain-Kategorie reist mit Domain',run:()=>computeMachineId('CGUAS',100n,'1.0')!==computeMachineId('TAI',100n,'1.0'),expected:true},
   {id:'T-L1-059',level:1,description:'MachineID lehnt :-Injection ab',run:()=>{try{computeMachineId('TA:I',0n,'1.0');return'no-throw';}catch{return'throw';}},expected:'throw'},
+  // ── Portiert aus t-eng.ts (Schritt 2) — dort nie ausgeführt, API-Aufrufe neu geschrieben ──
+  // T-L1-060 (ex T-ENG-036): der Sprung selbst, nicht nur ein Tabellenwert. T-L1-024 und
+  // T-L3-012 belegen 37 s bzw. 10 s, aber keine Schaltsekunde. Offset ≠ Schaltsekundenzahl
+  // (CG-STD-3100 §5.1) — genau die Verwechslung aus 7997bdc.
+  {id:'T-L1-060',level:1,description:'Schaltsekunde 1972-07-01: Offset springt 10→11',run:()=>`${taiMinusUtcAt(iso8601ToSeconds('1972-06-30T00:00:00Z'))}->${taiMinusUtcAt(iso8601ToSeconds('1972-07-01T00:00:00Z'))}`,expected:'10->11'},
+  // T-L1-061 (ex T-ENG-034): geprüft wird die Differenz zur GPS-Epoche, nicht gpsToTai(0)
+  // selbst — der Absolutwert 62451561619 würde die Epochenlage mitprüfen und bei einer
+  // falschen Konstante TAI_GPS trotzdem grün bleiben, solange die Epoche mitwandert.
+  // Die Vorlage rief gpsNsToTaiNs() auf der ns-Skala auf; die gibt es nicht.
+  {id:'T-L1-061',level:1,description:'GPS→TAI-Offset 19 s (Differenz zur GPS-Epoche)',run:()=>`${gpsToTai(0n)-iso8601ToSeconds('1980-01-06T00:00:00Z')}`,expected:'19'},
+  // T-L1-062 (ex T-ENG-012): Absolutvektor statt Roundtrip. T-L1-023/053 und T-L3-009 sind
+  // Roundtrips und damit invariant gegen einen konsistenten Versatz beider Richtungen;
+  // T-L1-022 verankert nur (1,1,1)=0, was auch eine fehlerhafte 400-Jahres-Regel erfüllt.
+  // Linke Hälfte: Tagesarithmetik 2023 Jahre nach der Epoche. Rechte Hälfte: derselbe Tag
+  // über den ISO-Pfad mit Tageszeit; die Differenz 55800 s = 15:30 prüft deren Durchreichung.
+  // Die Vorlage rief encodeGregorian() mit vollem Struct auf; die Funktion gibt es nicht.
+  {id:'T-L1-062',level:1,description:'Absolutvektor 2024-04-23 (Datum | Datum+15:30 UTC)',run:()=>`${gregorianToSeconds(2024n,4n,23n)}/${iso8601ToSeconds('2024-04-23T15:30:00Z')}`,expected:'63849427200/63849483000'},
   {id:'T-L2-001',level:2,description:'Allen BEFORE',run:()=>allenRelation({start:1n,end:5n},{start:10n,end:20n}),expected:'BEFORE'},
   {id:'T-L2-002',level:2,description:'Allen AFTER',run:()=>allenRelation({start:10n,end:20n},{start:1n,end:5n}),expected:'AFTER'},
   {id:'T-L2-003',level:2,description:'Allen MEETS',run:()=>allenRelation({start:1n,end:10n},{start:10n,end:20n}),expected:'MEETS'},
@@ -84,6 +102,20 @@ export const engineTests:TestCase[]=[
   {id:'T-L2-018',level:2,description:'CG-E-010.001',run:()=>Errors.CGUASError.segmentNotFound('x').code,expected:'CG-E-010.001'},
   {id:'T-L2-019',level:2,description:'CG-E-011.011 QKDCollision',run:()=>Errors.CGFSError.qkdCollision('x').code,expected:'CG-E-011.011'},
   {id:'T-L2-020',level:2,description:'CG-E-011.012 QKDDomainReuse',run:()=>Errors.CGFSError.qkdDomainReuse('x').code,expected:'CG-E-011.012'},
+  // T-L2-021/022 (ex T-ENG-053/054): anders als T-L2-017..020, die nur die Fehlerfabrik
+  // abfragen, laufen diese beiden gegen echte Wurfstellen — engine.ts:22 bzw. exakt.ts:54.
+  // Der 'no-throw'-Zweig belegt die Gegenrichtung (vgl. T-L1-059).
+  {id:'T-L2-021',level:2,description:'convertValue unbekanntes Domain-Paar wirft CG-E-005.001',run:()=>{try{convertValue(1n,'TAI','Cosmic');return'no-throw';}catch(e){return(e as{code:string}).code;}},expected:'CG-E-005.001'},
+  {id:'T-L2-022',level:2,description:'rat() mit Nenner 0 wirft CG-E-005.007',run:()=>{try{rat(1n,0n);return'no-throw';}catch(e){return(e as{code:string}).code;}},expected:'CG-E-005.007'},
+  // T-L2-023 ist KEINE Portierung von T-ENG-013 — dieser Sachverhalt (decodeGregorian(62135596800)
+  // == 1970-01-01) waere nach T-L1-022 und T-L1-062 nur eine dritte Stuetzstelle derselben
+  // Tagesarithmetik; T-ENG-013 und die Dublette T-ENG-030 entfallen ersatzlos. Neu ist der Fall
+  // am selben Zahlenwert: convertValue mit 'Unix' als Quelle war nie ausgefuehrt, engine.ts:20
+  // und :21 sind unberuehrter Produktivcode, und 62135596800 ist dort die Epochenkonstante.
+  // Die zweite Zusicherung liegt bewusst auf 2017 statt auf der Epoche: bei Unix 0 laege der
+  // Bezugspunkt vor 1972, wo taiMinusUtcAt still 0n liefert statt abzulehnen — ein Fall dort
+  // wuerde dieses Fehlverhalten als Erwartung festschreiben.
+  {id:'T-L2-023',level:2,description:'convertValue Unix→UTC Epochenkonstante | Unix→TAI Schaltsekunden 2017',run:()=>`${convertValue(0n,'Unix','UTC')}/${convertValue(1483228800n,'Unix','TAI')-convertValue(1483228800n,'Unix','UTC')}`,expected:'62135596800/37'},
   {id:'T-L3-001',level:3,description:'I-R1: eindeutiger Zeitwert',run:()=>{const a=createTimepoint('TAI','1.0',1742041937n),b=createTimepoint('TAI','1.0',1742041937n);return a.machine_id===b.machine_id;},expected:true},
   {id:'T-L3-002',level:3,description:'I-R2: transitiv',run:()=>compareValues(1n,2n)===-1&&compareValues(2n,3n)===-1&&compareValues(1n,3n)===-1,expected:true},
   {id:'T-L3-003',level:3,description:'I-R3: 100× identisch',run:()=>new Set(Array.from({length:100},()=>computeMachineId('TAI',1742041937n,'1.0'))).size,expected:1},

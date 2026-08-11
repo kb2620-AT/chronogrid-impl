@@ -42,16 +42,20 @@ export const cosmicTests: TestCase[] = [
     expected: true,
   },
 
-  // T-L3-COSMIC-002: Extent-Grenze — Domain hat definierten, gültigen BigInt-Extent
-  // SPEC-NOTE: Zielwert = 435494880000000000000000000 ns (Planck 2018) — noch offen
+  // T-L3-COSMIC-002: Extent-Grenze — max überschreitet INT64_MAX
+  // Verschärft in Schritt 2 (Übernahme des Sachverhalts aus dem nie ausgeführten T-ENG-082).
+  // Befund 2026-08-10: extent.max = 435494880000000000000000000 ns, also der Zielwert aus
+  // CG-STD-5100 §2.4 — der frühere Platzhalter-Hinweis war überholt. Die alte Fassung prüfte
+  // nur > 0n und wäre auch beim alten Platzhalter 999999999999999 grün geblieben; die Aussage
+  // „Cosmic braucht mehr als 64 Bit" trug sie damit nicht. T-L3-COSMIC-003 prüft dieselbe
+  // Schwelle bisher nur an einem Literal, nicht an der Domain.
   {
     id: 'T-L3-COSMIC-002', suite: 'T-L3-COSMIC', level: 3,
-    description: 'Cosmic Extent-Grenze: max ist definiert, > 0 und als BigInt darstellbar',
+    description: 'Cosmic Extent-Grenze: max ist definiert und überschreitet INT64_MAX',
     run: () => {
       const domain = getDomain('Cosmic', '1.1');
       const maxVal = BigInt(domain.extent.max!);
-      // Aktuelle Implementierung: Platzhalter-Wert; Spec-konforme Korrektur in Sprint 11-B
-      return maxVal > 0n && typeof maxVal === 'bigint';
+      return maxVal > INT64_MAX;
     },
     expected: true,
   },
