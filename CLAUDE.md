@@ -38,7 +38,7 @@ All pnpm/node commands run from `monorepo/` (there is no root `package.json`).
 pnpm install
 pnpm build                    # tsc --build across the project-reference graph
 
-pnpm test                     # cg-testkit CLI, Level 3 — must be 241/241
+pnpm test                     # cg-testkit CLI, Level 3 — must be 248/248 (+26 pending)
 npx vitest run --globals      # Vitest — must be 120/120 (CGUA 30 + ARITH 50 + RELB 24 + SP3 16)
 pnpm test:report              # same suite + writes conformance-report.json
 
@@ -80,7 +80,7 @@ cg-types      errors (CG-E-001…012 factory), domain types — depends on nothi
   └ cg-ctddl  CTDDL parser/validator (CG-STD-2100)
       └ cg-engine   encode/decode, MachineID, CGFI, mappings, Allen, Gregorian (CG-STD-3100)
                     + exakt.ts (Rat/isqrt), relativistik.ts (Klasse-B/RK45, §8.6)
-                    und sp3.ts (SP3-d Writer/Reader, Lagrange Ordnung 9)
+                    und sp3.ts (Writer SP3-d, Reader SP3-c/-d, Lagrange Ordnung 9)
           ├ cg-cguas     89-bit address space, SegmentRegistry (CG-STD-6100)
           ├ cg-usecases  UC1–UC5 domain definitions (CG-APP-0600)
           └ cg-storage   repositories: in-memory + PostgreSQL (CG-STD-4100 Ch. 3)
@@ -148,18 +148,27 @@ issue first (CG-ORG-2100 §4); implementation-only fixes do not.
 
 ## Conformance claims — be precise
 
-The CLI prints "LEVEL 3 KONFORM" but this is scoped. `t-l3-pending.ts` holds 25 `skip: true` stubs
+The CLI prints "LEVEL 3 KONFORM" but this is scoped. `t-l3-pending.ts` holds 26 `skip: true` stubs
 that are counted and reported but never executed (WORM/OAIS, geo-redundancy, GraphQL subscriptions,
-mTLS event bus, anchoring audit). Class-B/RK45 left that list in August 2026 and is active as
-`t-l3-rk45.ts`; the SP3-d chain followed in the same month as `t-l3-sp3.ts`, in both operating
-modes — velocity records and positions-only, the latter being the only path real IGS Final products
-allow. The remaining gap is narrower but real: every fixture comes from our own writer, and **no run
-against a downloaded IGS product has happened**, so header variants, constellation identifiers and
-outliers of real files are unverified. "SP3 chain implemented" means format written and read,
-interpolation exact, physics matching the analytic references — not "verified against IGS products".
-The certificate is self-declared and no independent verification exists yet. When writing docs, reports, or commit
-messages, do not round this up to unqualified conformance — the README's "Current Limitations"
-section (B-1/B-2/B-3) is the phrasing to reuse.
+mTLS event bus, anchoring audit, and one SP3 Δv comparison). Class-B/RK45 left that list in August
+2026 and is active as `t-l3-rk45.ts`; the SP3 chain — writer SP3-d, reader SP3-c and -d — followed
+in the same month as `t-l3-sp3.ts`,
+in both operating modes — velocity records and positions-only, the latter being the only path real
+IGS Final products allow. T-L3-SP3-007 (2026-08-10) is the first case that runs against a real,
+downloaded IGS Final product: thinning 900 s → 1800 s and comparing at the omitted epochs, measured
+|Δr|max = 1.360e-1 m against the 0.20 m threshold of CG-VERM-0101. That narrows the gap without
+closing it. It covers the orbit position of G01 from one daily product of one analysis centre, so
+other constellations, manoeuvres, outliers and the header variants of other centres stay unverified;
+the product is excluded by `.gitignore` and has to sit under `monorepo/fixtures/igs-local/`, so
+without it the test skips itself and CI never executes it — a fresh clone shows 248/248 and has not
+run the real-data check. The velocity side has no reference at all, because IGS Final carries no
+V-records: that is T-L3-SP3-008, category `pending-Referenz` — not a missing implementation but a
+missing measurand. "SP3 chain implemented" means format written and read, interpolation exact,
+physics matching the analytic references, orbit position checked once against one real product —
+not "verified against IGS products". The certificate is self-declared and no independent
+verification exists yet; running someone else's data through our own test is not independent
+verification. When writing docs, reports, or commit messages, do not round this up to unqualified
+conformance — the README's "Current Limitations" section (B-1/B-2/B-3) is the phrasing to reuse.
 
 ## Repo hygiene
 
