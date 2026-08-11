@@ -17,7 +17,13 @@
 # Konformitätslevel:
 #   Level 1 (55 Tests): T-L1-* aus CG-STD-3100, PLUS T-API-001 bis T-API-015
 #   Level 2 (155 Tests): Level 1 PLUS T-API-016 bis T-API-045
-#   Level 3 (304+ Tests): Level 2 PLUS T-API-046 bis T-API-060, T-ENG-*, T-CGUAS-*, T-CGFS-*
+#   Level 3 (304+ Tests): Level 2 PLUS T-API-046 bis T-API-060, T-CGUAS-*
+#            T-ENG-* ist seit 2026-08-10 nicht mehr Teil von cg-testkit (Suite gelöscht,
+#            sie wurde nie ausgeführt); die verbliebenen T-ENG-IDs laufen in
+#            packages/cg-cguas/src/cgua.test.ts unter Vitest, nicht über diese CLI.
+#            Die Nummerierung dort ist nicht lückenlos und enthält Suffix-IDs;
+#            maßgeblich ist die Datei selbst.
+#            T-CGFS-* ist nicht implementiert.
 #
 # Fehlerklassen: CG-E-001 bis CG-E-011 (CG-STD-2100 + CG-STD-4100 Kap. 11)
 # Invarianten:  I-R3 (Determinismus), I-D1 (Domain-Unveränderlichkeit),
