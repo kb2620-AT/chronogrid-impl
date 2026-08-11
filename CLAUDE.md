@@ -172,7 +172,7 @@ conformance — the README's "Current Limitations" section (B-1/B-2/B-3) is the 
 
 ## Repo hygiene
 
-Helper scripts belong in `scripts/` (`cg-fix-run.ps1`, `cg-testkit-integrate.ps1`) and
+Helper scripts belong in `scripts/` (`cg-fix-run.ps1`) and
 `scripts/internal/` — the latter holds the ones that stay useful across sprints:
 `cg-verify-and-commit.ps1` (reproduces the three CI jobs locally, gated commit, `-Push` optional),
 `CG-PrePublic-Scan.ps1` (pre-publication checklist), `CG-FIX-C_apply.ps1`, and the
