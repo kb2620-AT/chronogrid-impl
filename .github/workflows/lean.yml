@@ -33,7 +33,10 @@ jobs:
       - name: "Print axioms (Nachweis: kein sorry)"
         run: |
           set -o pipefail
-          ~/.elan/bin/lake env lean Chronogrid/Basic.lean | tee verification-log.txt
+          {
+            ~/.elan/bin/lake env lean Chronogrid/Basic.lean
+            ~/.elan/bin/lake env lean Chronogrid/Mapping.lean
+          } | tee verification-log.txt
 
       - name: Upload verification log
         uses: actions/upload-artifact@v4

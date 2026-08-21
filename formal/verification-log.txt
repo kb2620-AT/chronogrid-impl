@@ -2,3 +2,12 @@
 'ChronoGrid.chronogrid_prop_1_1_unique_representation' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ChronoGrid.chronogrid_th_3_1_mapping_uniqueness' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ChronoGrid.chronogrid_th_5_1_unique_time_value' does not depend on any axioms
+'ChronoGrid.classAMappingQ_int_cast' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.classAMappingQ_comp' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_closure' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_comp_uniqueness' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chainApply_pair' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_chain_isClassA' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_chain_isClassA_length' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_chain_uniqueness' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_th_3_2_chain_limit_8' depends on axioms: [propext, Classical.choice, Quot.sound]
