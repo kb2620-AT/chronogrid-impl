@@ -1,6 +1,7 @@
 name: Lean 4 Verification (ChronoGrid formal)
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'formal/**'
