@@ -55,6 +55,7 @@ python cg_verify.py --verbose          # Python second implementation
 cd formal && lake exe cache get && lake build   # Lean
 lake env lean Chronogrid/Basic.lean             # 4 axiom lines
 lake env lean Chronogrid/Mapping.lean           # 9 axiom lines; 13 total, no `sorryAx`
+lake env lean Chronogrid/Hierarchy.lean         # 2 axiom lines; 15 total, no `sorryAx`
 ```
 
 ### Running a subset of tests
