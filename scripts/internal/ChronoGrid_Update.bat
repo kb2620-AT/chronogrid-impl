@@ -1,61 +1,49 @@
 @echo off
 chcp 65001 >nul
-title ChronoGrid Dokumentupdate
+title ChronoGrid Doku-Verknuepfung pruefen
 
 echo.
 echo ==========================================
-echo  ChronoGrid Dokumentupdate
+echo  ChronoGrid Doku-Verknuepfung (Junction)
 echo ==========================================
 echo.
 
-set DRIVE_DOCS=G:\Meine Ablage\ChronoGrid\Alle-Wichtig
+set DRIVE_DOCS=C:\Users\bauer\Meine Ablage\ChronoGrid\Alle-Wichtig
 set REPO=C:\Users\bauer\OneDrive\Desktop\chronogrid-impl
-set REPO_DOCS=C:\Users\bauer\OneDrive\Desktop\chronogrid-impl\ChronoGrid-docs
+set REPO_DOCS=%REPO%\ChronoGrid-docs
 
-:: Google Drive pruefen
+:: Google Drive Quelle pruefen
 if not exist "%DRIVE_DOCS%" (
-    echo FEHLER: Google Drive nicht gefunden: %DRIVE_DOCS%
+    echo FEHLER: Quelle nicht gefunden: %DRIVE_DOCS%
     pause
     exit /b 1
 )
 
-:: Zielordner anlegen falls nicht vorhanden
-if not exist "%REPO_DOCS%" mkdir "%REPO_DOCS%"
-
-:: Schritt 1: Alle Dateien aus /200426 kopieren
-echo [ 1/3 ] Dateien von Google Drive kopieren...
-set count=0
-for %%f in ("%DRIVE_DOCS%\*.*") do (
-    copy /Y "%%f" "%REPO_DOCS%\%%~nxf" >nul
-    echo   OK: %%~nxf
-    set /a count+=1
-)
-echo   Fertig - Dateien kopiert.
-echo.
-
-:: Schritt 2: git pull
-echo [ 2/3 ] git pull...
-cd /d "%REPO%"
-git pull origin main
-echo.
-
-:: Schritt 3: git commit und push
-echo [ 3/3 ] Git commit und push...
-git add "ChronoGrid-docs/"
-
-git diff --cached --quiet
-if %errorlevel% neq 0 (
-    for /f "tokens=2 delims==" %%d in ('wmic os get localdatetime /value') do set dt=%%d
-    set datum=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%
-    git commit -m "docs: Sync from Google Drive (%datum%)"
-    git push origin main
-    echo.
-    echo ==========================================
-    echo  Fertig! GitHub ist aktuell.
-    echo ==========================================
+:: Junction sicherstellen ^(ChronoGrid-docs ist KEIN Kopierziel mehr,
+:: sondern eine Windows-Verzeichnis-Junction auf die Google-Drive-Quelle.
+:: Wird nicht mehr in Git versioniert, siehe .gitignore.^)
+if not exist "%REPO_DOCS%" (
+    echo Erstelle Junction ChronoGrid-docs ...
+    mklink /J "%REPO_DOCS%" "%DRIVE_DOCS%"
+    if errorlevel 1 (
+        echo FEHLER: Junction konnte nicht erstellt werden.
+        pause
+        exit /b 1
+    )
+    echo OK: Junction erstellt.
 ) else (
-    echo Keine Aenderungen. GitHub bereits aktuell.
+    fsutil reparsepoint query "%REPO_DOCS%" >nul 2>&1
+    if errorlevel 1 (
+        echo FEHLER: %REPO_DOCS% existiert, ist aber KEINE Junction.
+        echo Bitte manuell pruefen, bevor hier weitergemacht wird.
+        pause
+        exit /b 1
+    )
+    echo ChronoGrid-docs vorhanden - OK.
 )
 
+echo.
+echo Fertig. Inhalte kommen live aus Google Drive, kein manueller
+echo Kopier- oder Commit-Schritt mehr noetig.
 echo.
 pause

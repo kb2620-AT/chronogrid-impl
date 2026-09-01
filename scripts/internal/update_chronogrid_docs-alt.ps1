@@ -1,84 +1,65 @@
-# ChronoGrid - Dokumentupdate Script
-# Terminal: .\update_chronogrid_docs.ps1
+# ChronoGrid - Doku-Verknuepfungen sicherstellen (docs + Zusatzdokumente)
+# Terminal: .\update_chronogrid_docs-alt.ps1
+#
+# ChronoGrid-docs und ChronoGrid-wichtige Zusatzdokumente sind Windows-
+# Verzeichnis-Junctions auf die Google-Drive-Quellen (kein Kopierziel
+# mehr) und werden NICHT in Git versioniert (siehe .gitignore). Dieses
+# Skript kopiert nichts mehr und committet nichts - es stellt nur
+# sicher, dass beide Junctions existieren und korrekt zeigen.
 
-# Google Drive Quellen
-$DRIVE_DOCS   = "G:\Meine Ablage\ChronoGrid\Alle-Wichtig"
-$DRIVE_ZUSATZ = "G:\Meine Ablage\ChronoGrid\wichtige Zusatzdokumente"
+$DRIVE_DOCS   = "C:\Users\bauer\Meine Ablage\ChronoGrid\Alle-Wichtig"
+$DRIVE_ZUSATZ = "C:\Users\bauer\Meine Ablage\ChronoGrid\Wichtige Zusatzdokumente"
 
-# Git-Repo Ziele
 $REPO         = "C:\Users\bauer\OneDrive\Desktop\chronogrid-impl"
-$REPO_DOCS    = "C:\Users\bauer\OneDrive\Desktop\chronogrid-impl\ChronoGrid-docs"
-
-
-$BRANCH = "main"
-$DATE   = Get-Date -Format "yyyy-MM-dd"
-$MSG    = "docs: Sync from Google Drive ($DATE)"
+$REPO_DOCS    = Join-Path $REPO "ChronoGrid-docs"
+$REPO_ZUSATZ  = Join-Path $REPO "ChronoGrid-wichtige Zusatzdokumente"
 
 Write-Host ""
-Write-Host "ChronoGrid Dokumentupdate" -ForegroundColor Cyan
+Write-Host "ChronoGrid Doku-Verknuepfungen" -ForegroundColor Cyan
 Write-Host "======================================="
 Write-Host ""
 
-# Pruefen ob Google Drive erreichbar
-if (-not (Test-Path $DRIVE_DOCS)) {
-    Write-Host "FEHLER: Google Drive nicht gefunden: $DRIVE_DOCS" -ForegroundColor Red
+function Ensure-Junction {
+    param(
+        [string]$Name,
+        [string]$RepoPath,
+        [string]$DrivePath
+    )
+
+    if (-not (Test-Path $DrivePath)) {
+        Write-Host "FEHLER: Quelle nicht gefunden: $DrivePath" -ForegroundColor Red
+        return $false
+    }
+
+    $item = Get-Item -Path $RepoPath -ErrorAction SilentlyContinue
+    if (-not $item) {
+        Write-Host "Erstelle Junction $Name ..." -ForegroundColor Yellow
+        New-Item -ItemType Junction -Path $RepoPath -Target $DrivePath | Out-Null
+        Write-Host "OK: Junction erstellt." -ForegroundColor Green
+    } elseif ($item.LinkType -ne "Junction") {
+        Write-Host "WARNUNG: $RepoPath existiert, ist aber KEINE Junction." -ForegroundColor Red
+        Write-Host "Bitte manuell pruefen, bevor hier weitergemacht wird." -ForegroundColor Red
+        return $false
+    } else {
+        Write-Host "$Name vorhanden und verknuepft mit:" -ForegroundColor Green
+        Write-Host "  $($item.Target)" -ForegroundColor Green
+    }
+    return $true
+}
+
+Write-Host "[ 1/2 ] ChronoGrid-docs" -ForegroundColor Yellow
+$okDocs = Ensure-Junction -Name "ChronoGrid-docs" -RepoPath $REPO_DOCS -DrivePath $DRIVE_DOCS
+
+Write-Host ""
+Write-Host "[ 2/2 ] ChronoGrid-wichtige Zusatzdokumente" -ForegroundColor Yellow
+$okZusatz = Ensure-Junction -Name "ChronoGrid-wichtige Zusatzdokumente" -RepoPath $REPO_ZUSATZ -DrivePath $DRIVE_ZUSATZ
+
+if (-not ($okDocs -and $okZusatz)) {
     exit 1
 }
-if (-not (Test-Path $DRIVE_ZUSATZ)) {
-    Write-Host "FEHLER: Google Drive nicht gefunden: $DRIVE_ZUSATZ" -ForegroundColor Red
-    exit 1
-}
 
-# Zielordner anlegen falls nicht vorhanden
-if (-not (Test-Path $REPO_DOCS))   { New-Item -ItemType Directory -Path $REPO_DOCS   | Out-Null }
-if (-not (Test-Path $REPO_ZUSATZ)) { New-Item -ItemType Directory -Path $REPO_ZUSATZ | Out-Null }
-
-# Schritt 1: ChronoGrid-docs synchronisieren
-Write-Host "[ 1/4 ] ChronoGrid-docs von Google Drive kopieren..." -ForegroundColor Yellow
-$files = Get-ChildItem -Path $DRIVE_DOCS -Filter "*.docx"
-$count = 0
-foreach ($file in $files) {
-    Copy-Item $file.FullName (Join-Path $REPO_DOCS $file.Name) -Force
-    Write-Host "  OK: $($file.Name)" -ForegroundColor Green
-    $count++
-}
-Write-Host "  $count Dateien kopiert." -ForegroundColor Cyan
-
-# Schritt 2: wichtige Zusatzdokumente synchronisieren
 Write-Host ""
-Write-Host "[ 2/4 ] Wichtige Zusatzdokumente von Google Drive kopieren..." -ForegroundColor Yellow
-$files2 = Get-ChildItem -Path $DRIVE_ZUSATZ
-$count2 = 0
-foreach ($file in $files2) {
-    Copy-Item $file.FullName (Join-Path $REPO_ZUSATZ $file.Name) -Force
-    Write-Host "  OK: $($file.Name)" -ForegroundColor Green
-    $count2++
-}
-Write-Host "  $count2 Dateien kopiert." -ForegroundColor Cyan
-
-# Schritt 3: git pull
-Write-Host ""
-Write-Host "[ 3/4 ] git pull..." -ForegroundColor Yellow
-Set-Location $REPO
-git pull origin $BRANCH
-
-# Schritt 4: git add / commit / push
-Write-Host ""
-Write-Host "[ 4/4 ] Git commit und push..." -ForegroundColor Yellow
-git add "ChronoGrid-docs/"
-git add "ChronoGrid-wichtige Zusatzdokumente/"
-
-$changes = git status --porcelain
-if ($changes -ne $null) {
-    git commit -m $MSG
-    git push origin $BRANCH
-    Write-Host ""
-    Write-Host "======================================="
-    Write-Host " Fertig! GitHub ist aktuell." -ForegroundColor Green
-    Write-Host "======================================="
-} else {
-    Write-Host "Keine Aenderungen. GitHub bereits aktuell." -ForegroundColor Yellow
-}
-
+Write-Host "Hinweis: Inhalte kommen live aus Google Drive, kein Kopier-" -ForegroundColor DarkGray
+Write-Host "oder Commit-Schritt mehr noetig." -ForegroundColor DarkGray
 Write-Host ""
 Read-Host "Druecke Enter zum Schliessen"
