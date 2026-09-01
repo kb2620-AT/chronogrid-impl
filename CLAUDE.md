@@ -52,7 +52,9 @@ From the repo root:
 
 ```bash
 python cg_verify.py --verbose          # Python second implementation
-cd formal && lake exe cache get && lake build   # Lean; then `lake env lean Chronogrid/Basic.lean` prints axioms
+cd formal && lake exe cache get && lake build   # Lean
+lake env lean Chronogrid/Basic.lean             # 4 axiom lines
+lake env lean Chronogrid/Mapping.lean           # 9 axiom lines; 13 total, no `sorryAx`
 ```
 
 ### Running a subset of tests

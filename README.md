@@ -35,10 +35,13 @@ All 18 formal assertions in CG-STD-0000 v0.9 are internally elaborated and self-
 External verification by qualified mathematicians/logicians is still outstanding: both institutions
 approached, RISC/JKU Linz and TU Wien, declined for capacity reasons, and BEV referred the matter to
 Austrian Standards, where no contact has been made. One qualification concerns the *kind* of
-checking, not its independence: four of the assertions — I-R1, I-R2, I-M1 and Prop. 1.1 — are
-mechanically verified in Lean 4/Mathlib and contain no `sorry`. That is a machine checking our own
-proofs against our own formalisation; it is not an external assessment and leaves this blocker
-in place.
+checking, not its independence: five of the assertions are mechanically verified in Lean 4/Mathlib
+and contain no `sorry`: the invariants I-R1, I-R2 and I-M1, Prop. 1.1, and — since 2026-08-21 —
+Theorem 3.2 (composability of class-A mappings), which is proved for chains of arbitrary length,
+with the normative chain limit of 8 following as a corollary. Note that the corollary establishes
+well-definedness up to 8; it does not model or enforce the runtime rejection above 8. That is a
+machine checking our own proofs against our own formalisation; it is not an external assessment and
+leaves this blocker in place.
 The IGS run described under B-3 uses external *data*, but it is our own test, written and run by us —
 it does not narrow this blocker.
 
