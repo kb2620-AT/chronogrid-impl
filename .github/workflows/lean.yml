@@ -37,6 +37,7 @@ jobs:
           {
             ~/.elan/bin/lake env lean Chronogrid/Basic.lean
             ~/.elan/bin/lake env lean Chronogrid/Mapping.lean
+            ~/.elan/bin/lake env lean Chronogrid/Hierarchy.lean
           } | tee verification-log.txt
 
       - name: Upload verification log

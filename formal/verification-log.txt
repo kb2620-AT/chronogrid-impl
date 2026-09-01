@@ -11,3 +11,5 @@
 'ChronoGrid.chronogrid_th_3_2_chain_isClassA_length' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ChronoGrid.chronogrid_th_3_2_chain_uniqueness' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ChronoGrid.chronogrid_th_3_2_chain_limit_8' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_lemma_2_1_base_level' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ChronoGrid.chronogrid_lemma_2_1_hierarchy_consistency' depends on axioms: [propext, Classical.choice, Quot.sound]
