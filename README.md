@@ -35,13 +35,13 @@ All 18 formal assertions in CG-STD-0000 v0.9 are internally elaborated and self-
 External verification by qualified mathematicians/logicians is still outstanding: both institutions
 approached, RISC/JKU Linz and TU Wien, declined for capacity reasons, and BEV referred the matter to
 Austrian Standards, where no contact has been made. One qualification concerns the *kind* of
-checking, not its independence: seven of the assertions are mechanically verified in Lean 4/Mathlib
+checking, not its independence: eight of the assertions are mechanically verified in Lean 4/Mathlib
 and contain no `sorry`: the invariants I-R1, I-R2 and I-M1, Prop. 1.1 and — since 2026-08-21 —
 Theorem 3.2 (composability of class-A mappings), which is proved for chains of arbitrary length,
 with the normative chain limit of 8 following as a corollary, and — since 2026-09-01 — Lemma 2.1
 (hierarchy consistency), and — since 2026-09-09 — Theorem 3.3 (reference point consistency, linear
 case per Def. 3.3 only; the piecewise-linear case per Def. 3.4 is explicitly out of scope pending
-normative clarification of the segment/extent link). Note that the corollary establishes
+normative clarification of the segment/extent link), and — since 2026-09-10 — Corollary 3.1 (injectivity and exact reconstruction via the inverse map, linear case per Def. 3.3 only; integrality of mapped values is not implied by Def. 3.3 and is carried as an explicit hypothesis, because the normative source of that requirement is unresolved). Note that the chain-limit corollary establishes
 well-definedness up to 8; it does not model or enforce the runtime rejection above 8. That is a
 machine checking our own proofs against our own formalisation; it is not an external assessment and
 leaves this blocker in place.
